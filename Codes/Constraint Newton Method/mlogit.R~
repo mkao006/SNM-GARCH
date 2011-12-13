@@ -1,0 +1,410 @@
+# ===================== #
+# semiparametic density #
+# ===================== #
+
+# k     number of groups
+# gi    number of observations in each group
+# ni    number of binomial trials for each observation
+# pt    support points
+# pr    proportions
+# beta
+# x     given covariates
+
+rmlogit = function(k=100, gi=2:3, ni=6:10, pt=c(0,4), pr=c(.7,.3),
+          beta=c(-3,0,3), x, i1=1) {
+  pr = rep(pr, len=length(pt))
+  theta = sample(pt, k, replace=TRUE, prob=pr)
+  gi = rep(gi, len=k)
+  gic = c(0,cumsum(gi))
+  n = gic[k+1]
+  ni = rep(ni, len=n)
+  r = length(beta)
+  data = matrix(nrow=n, ncol=r+3)
+  dimnames(data) = list(NULL, c("group","yi","ni",paste("x",1:r,sep="")))
+  for(i in 1:k) {
+    j = (gic[i]+1):gic[i+1]
+    data[j,1] = i1 + i - 1
+    if(missing(x)) xi = matrix(rnorm(r*gi[i])-.5, nrow=gi[i])
+    else xi = x[j,,drop=FALSE]
+    data[j,4:(r+3)] = xi
+    eta = drop(theta[i] + xi %*% beta)
+    p = 1 / (1 + exp(-eta))
+    data[j,2] = rbinom(rep(1,gi[i]), ni[j], prob=p)
+    data[j,3] = ni[j]
+  }
+  class(data) = "mlogit"
+  attr(data, "ui") = 1:k
+  attr(data, "gi") = gi
+  data
+}
+
+rdup.mlogit = function(x, d, beta, nd) {
+  index = list(x[,1])
+  # ui = attr(x, "ui")
+  gi = attr(x, "gi")
+  # for(i in 1:length(ui)) gi[i] = sum(x[,1] == ui[i])
+  n = nrow(x)
+  xn = matrix(nrow=n*nd, ncol=ncol(x)-3)
+  for(i in 1:nd) xn[((i-1)*n+1):(i*n),] = x[,-(1:3),drop=FALSE]
+  rmlogit(nd*length(x), gi, x[,3], d$pt, d$pr, beta, xn)
+}
+
+rdup2.mlogit = function(x, d, beta, nj) {
+  m = length(d$pt)
+  nj = rep(nj, length=m)
+  n = length(x)
+  xn = matrix(nrow=sum(nj), ncol=ncol(x)-3)
+  r = ncol(x) - 3
+  data = NULL
+  gi = attr(x, "gi")
+  gic = cumsum(c(0,gi))
+  i1 = 1
+  gin = numeric()
+  for(l in 1:m) {
+    index = sort(sample2(n,nj[l]))
+    k = length(index)
+    gix = gi[index]
+    gixc = cumsum(c(0,gix))
+    gin = c(gin, gix)
+    dn = matrix(nrow=sum(gix), ncol=r+3)
+    for(i in 1:k) {
+      j = (gixc[i]+1):gixc[i+1]
+      dn[j,1] = i1 + i - 1
+      dn[j,3:(r+3)] = x[(gic[index[i]]+1):gic[index[i]+1],3:(r+3),drop=FALSE]
+      eta = drop(d$pt[l] + dn[j,4:(r+3),drop=FALSE] %*% beta)
+      p = 1 / (1 + exp(-eta))
+      dn[j,2] = rbinom(rep(1,gix[i]), dn[j,3], prob=p)
+    }
+    data = rbind(data, dn)
+    i1 = i1 + k
+  }
+  dimnames(data) = dimnames(x)
+  class(data) = "mlogit"
+  attr(data, "ui") = 1:(i1-1)
+  attr(data, "gi") = gin
+  data
+}
+
+sample2 = function(n, size) {
+  k = floor(size / n)
+  if(k >= 1) x = rep(1:n, rep(k,n))
+  else x = numeric(0)
+  c(x, sample(n, size %% n))
+}
+
+# k, the number of groups
+
+length.mlogit = function(x) length(attr(x, "ui"))
+
+range.mlogit = function(x, beta, ...) {
+  xbeta = drop(x[,-(1:3),drop=FALSE] %*% beta)
+  ui = attr(x, "ui")
+  xbeta.max = xbeta.min = ybar = double(length(ui))
+  for(i in 1:length(ui)) {
+    xbeta.max[i] = max(xbeta[x[,1]==ui[i]])
+    xbeta.min[i] = min(xbeta[x[,1]==ui[i]])
+    ybar[i] = sum(x[x[,1]==ui[i],2]) / sum(x[x[,1]==ui[i],3])
+  }
+#  eps = 1e-15
+  yn = pmin(pmax(ybar, 0.0001), 0.9999)
+#  yn = pmin(pmax(ybar, 0.000001), 0.999999)
+#  yn = pmin(pmax(ybar, eps), 1-eps)
+  c( min(log(yn/(1-yn)) - xbeta.max), max(log(yn/(1-yn)) - xbeta.min) )
+}
+
+initial.mlogit = function(x, beta=NULL, mix=NULL, kmax=NULL) {
+  if(is.null(beta)) {
+    # beta = rep(c(-3,0,3), ncol(x) - 3)
+    # beta = rep(0, ncol(x)-3)
+    resp = cbind(x[,2], x[,3]-x[,2])
+    coef = glm(resp ~ x[,-(1:3)], family=binomial)$coef
+    names(coef) = NULL
+    beta = coef[-1]
+    # if(is.null(mix) || is.null(mix$pt)) mix = dden(coef[1])
+  }
+  beta = rep(beta, len=ncol(x)-3)
+  if(is.null(kmax)) kmax = 10
+  if(is.null(mix) || is.null(mix$pt)) {
+    rth = range(x, beta)
+    mix = dden(seq(rth[1], rth[2], len=kmax), mix$pr)
+    # p = sum(x[,2]) / sum(x[,3])
+    # mix = dden(log(p/(1-p)))
+  }
+  list(beta=beta, mix=mix)
+}
+
+valid.mlogit = function(x, beta) TRUE
+
+logd.mlogit = function(x, beta, pt, which, eps=1e-10) {
+  dl = vector("list", 4)
+  names(dl) = c("ld","db1","dt1","dt2")
+  xij = x[,-(1:3),drop=FALSE]
+  xbeta = xij %*% beta
+  dim(xbeta) = NULL
+  eta = rep(xbeta, length(pt)) + rep(pt, each=length(xbeta))
+  # p = pmin(pmax(1 / (1 + exp(-eta)), eps), 1-eps)   # so no NA is produced
+  p = 1 / (1 + exp(-eta))
+  p[p < eps] = eps
+  p[p > 1-eps] = 1 - eps               # To avoid producing NA's
+  dim(p) = c(nrow(x), length(pt))
+  ui = attr(x, "ui")
+  if(which[1] == 1) {
+    a = x[,2] * log(p) + (x[,3]-x[,2]) * log(1-p)
+    dl$ld = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui)) dl$ld[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  if(which[2] == 1) {
+    d = sweep(array(x[,2] - x[,3]*p, dim=c(nrow(p), length(pt), length(beta))),
+      c(1,3), xij, "*")
+    dl$db1 = array(dim=c(length(ui), length(pt), length(beta)))
+    for(i in 1:length(ui))
+      dl$db1[i,,] = apply(d[x[,1]==ui[i],,,drop=FALSE], 2:3, sum)
+  }
+  if(which[3] == 1) {
+    a = x[,2] - x[,3] * p
+    dl$dt1 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$dt1[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  if(which[4] == 1) {
+    a = - x[,3] * p * (1-p)
+    dl$dt2 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$dt2[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  dl
+}
+
+# The mixture density does not seem to be all right.
+
+plot.mlogit = function(x, mix, beta, eps=1e-10) {
+  if(ncol(x) < 4) stop("no covariate")
+  if(ncol(x) == 4) {
+    pt = mix$pt
+    xr = range(x[,4])
+    xr = xr + diff(xr) * c(-.25,.25)
+    xij = as.matrix(seq(xr[1],xr[2],len=100))
+    xbeta = xij %*% beta
+    dim(xbeta) = NULL
+    eta = rep(xbeta, length(pt)) + rep(pt, each=length(xbeta))
+    p = 1 / (1 + exp(-eta))
+    p[p < eps] = eps
+    p[p > 1-eps] = 1 - eps               # To avoid producing NA's
+    dim(p) = c(nrow(xij), length(pt))
+    plot(x[,4], x[,2]/x[,3], col="blue", cex=sqrt(x[,3]/max(x[,3])*3),
+         xlab="x", ylab="Probability", ylim=c(0,1), xlim=xr)
+    for(i in 1:ncol(p))
+      lines(xij, p[,i], lty=2, col="darkblue")
+    pm = rowSums(sweep(p,2,mix$pr,"*"))
+    lines(xij, pm, col="darkblue")
+  }
+}
+
+# =========================================
+
+
+
+
+
+lf1.mlogit = function(x, beta, pt, eps=1e-10) {
+  xbeta = x[,-(1:3),drop=FALSE] %*% beta
+  dim(xbeta) = NULL
+  p = 1 / (1 + exp(-pt-xbeta))
+  p[p < eps] = eps
+  p[p > 1 - eps] = 1 - eps   # so no NA is produced
+  ui = attr(x, "ui")
+  a = x[,2] * log(p) + (x[,3]-x[,2]) * log(1-p)
+  lf = double(length(ui))
+  for(i in 1:length(ui)) lf[i] = sum(a[x[,1]==ui[i]])
+  lf
+}
+
+dlb1.mlogit = function(x, beta, pt, order=1, eps=1e-10) {
+  xij = x[,-(1:3),drop=FALSE]
+  p = 1 / (1 + exp(-pt-drop(xij %*% beta)))
+  p[p < eps] = eps
+  p[p > 1 - eps] = 1 - eps   # so no NA is produced
+  dl = vector("list", length(order))
+  names(dl) = paste("d", order, sep="")
+  ui = attr(x, "ui")
+  if(any(order == 0)) {
+    a = x[,2] * log(p) + (x[,3]- x[,2]) * log(1-p)
+    dl$d0 = double(length(ui))
+    for(i in 1:length(ui)) dl$d0[i] = sum(a[x[,1]==ui[i]])
+  }
+  if(any(order == 1)) {
+    d = (x[,2] - x[,3]*p) * xij
+    dl$d1 = matrix(nrow=length(ui), ncol=length(beta))
+    for(i in 1:length(ui))
+      dl$d1[i,] = colSums(d[x[,1]==ui[i],,drop=FALSE])
+  }
+  dl
+}
+
+# The function "aggregate" appears to be very slow, especially when pt is
+# of a large size. Using lapply and tapply directly takes about half the
+# time needed by aggregate. Better still is to use loops directly, as in
+# the implementation.
+
+dlt1.mlogit = function(x, beta, pt, order=1, eps=1e-10) {
+  xbeta = x[,-(1:3),drop=FALSE] %*% beta
+  dim(xbeta) = NULL
+  p = 1 / (1 + exp(-pt-xbeta))
+  p[p < eps] = eps
+  p[p > 1 - eps] = 1 - eps   # so no NA is produced
+  dl = vector("list", length(order))
+  names(dl) = paste("d", order, sep="")
+  ui = attr(x, "ui")
+  if(any(order == 0)) {
+    a = x[,2] * log(p) + (x[,3]- x[,2]) * log(1-p)
+    dl$d0 = double(length(ui))
+    for(i in 1:length(ui)) dl$d0[i] = sum(a[x[,1]==ui[i]])
+  }
+  if(any(order == 1)) {
+    a = x[,2] - x[,3] * p
+    dl$d1 = double(length(ui))
+    for(i in 1:length(ui)) dl$d1[i] = sum(a[x[,1]==ui[i]])
+  }
+  if(any(order == 2)) {
+    a = - x[,3] * p * (1-p)
+    dl$d2 = double(length(ui))
+    for(i in 1:length(ui)) dl$d2[i] = sum(a[x[,1]==ui[i]])
+  }
+  dl
+}
+
+lf.mlogit = function(x, beta, pt, eps=1e-10) {
+  xbeta = x[,-(1:3),drop=FALSE] %*% beta
+  dim(xbeta) = NULL
+  # eta = outer(xbeta, pt, "+")
+  eta = rep(xbeta, length(pt)) + rep(pt, each=length(xbeta))
+  p = pmin(pmax(1 / (1 + exp(-eta)), eps), 1-eps)   # so no NA is produced
+  dim(p) = c(nrow(x), length(pt))
+  ui = attr(x, "ui")
+  a = x[,2] * log(p) + (x[,3]-x[,2]) * log(1-p)
+  lf = matrix(nrow=length(ui), ncol=ncol(a))
+  for(i in 1:length(ui)) lf[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  lf
+}
+
+dlb.mlogit = function(x, beta, pt, order=1, eps=1e-10) {
+  xij = x[,-(1:3),drop=FALSE]
+  eta = outer(drop(xij %*% beta), pt, "+")
+  p = pmin(pmax(1 / (1 + exp(-eta)), eps), 1-eps)
+  dl = vector("list", length(order))
+  names(dl) = paste("d", order, sep="")
+  ui = attr(x, "ui")
+  if(any(order == 0)) {
+    a = x[,2] * log(p) + (x[,3]- x[,2]) * log(1-p)
+    dl$d0 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$d0[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  if(any(order == 1)) {
+    d = sweep(array(x[,2] - x[,3]*p, dim=c(nrow(p), length(pt), length(beta))),
+      c(1,3), xij, "*")
+    dl$d1 = array(dim=c(length(ui), length(pt), length(beta)))
+    for(i in 1:length(ui))
+      dl$d1[i,,] = apply(d[x[,1]==ui[i],,,drop=FALSE], 2:3, sum)
+  }
+#   if(any(order == 2)) {
+#     d = sweep(array(x[,2] - x[,3]*p, dim=c(nrow(p), length(pt), length(beta))),
+#       c(1,3), xij, "*")
+#     dl$d1 = array(dim=c(length(ui), length(pt), length(beta)))
+#     for(i in 1:length(ui))
+#       dl$d1[i,,] = apply(d[x[,1]==ui[i],,,drop=FALSE], 2:3, sum)
+#   }
+  dl
+}
+
+# The function "aggregate" appears to be very slow, especially when pt is
+# of a large size. Using lapply and tapply directly uses about half the
+# time needed by aggregate. Further better is to use loops directly, as in
+# the implementation.
+
+dlt.mlogit = function(x, beta, pt, order=1, eps=1e-10) {
+  p = 1 / (1 + exp(-outer(drop(x[,-(1:3),drop=FALSE] %*% beta), pt, "+")))
+  p = pmin(pmax(p, eps), 1-eps)
+  dl = vector("list", length(order))
+  names(dl) = paste("d", order, sep="")
+  ui = attr(x, "ui")
+  if(any(order == 0)) {
+    a = x[,2] * log(p) + (x[,3]-x[,2]) * log(1-p)
+    dl$d0 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$d0[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  if(any(order == 1)) {
+    a = x[,2] - x[,3] * p
+    dl$d1 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$d1[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  if(any(order == 2)) {
+    a = - x[,3] * p * (1-p)
+    dl$d2 = matrix(nrow=length(ui), ncol=ncol(a))
+    for(i in 1:length(ui))
+      dl$d2[i,] = colSums(a[x[,1]==ui[i],,drop=FALSE])
+  }
+  dl
+}
+
+as.mlogit = function(x) {
+  attr(x, "ui") = unique(sort(x[,1]))
+  attr(x, "gi") = tabulate(sort(x[,1]))
+  k = ncol(x) - 3
+#  if(k == 1) dimnames(x) = list(NULL,c("group","yi","ni","x"))
+  dimnames(x) = list(NULL,c("group","yi","ni",paste("x",1:k,sep="")))
+  class(x) = "mlogit"
+  x
+}
+
+# =============== #
+# Additional code #
+# =============== #
+
+
+aggreg2 = function(a, index, FUN) {
+  as.matrix(as.data.frame(lapply(as.data.frame(a), tapply, index, FUN)))
+}
+
+# a       matrix
+# index   group indecies of the rows of a
+# FUN     function to be applied to each group
+
+aggreg = function(a, index, FUN) {
+  ui = unique(sort(index))
+  r = matrix(nrow=length(ui), ncol=ncol(a))
+  for(i in 1:length(ui))
+    r[i,] = apply(a[index==ui[i],,drop=FALSE], 2, FUN)
+  dimnames(r) = list(ui, colnames(a))
+  r
+}
+
+ d2lt.mlogit = function(x, beta, pt) {
+   eta = outer(drop(x[,-(1:3),drop=FALSE] %*% beta), pt, "+")
+   p = 1 / (1 + exp(-eta))
+   as.matrix(aggregate(- p * (1-p), by=list(group=x[,1]), FUN=sum)[,-1])
+}
+
+
+
+########################################################################
+## My test codes
+########################################################################
+library(tseries)
+library(fGarch)
+
+test3 <- logd.mlogit(test, initial.mlogit(test)$beta, 100, rep(1, 4))
+
+test4 <- dlt1.mlogit(test, initial.mlogit(test)$beta, 100)
+
+
+## Tesing the fgarch package
+fit <- garchFit(~ garch(1, 1), data = garchSim(n = 1000))
+
+plot(fit)
+
+plot(dem2gbp$DEM2GBP, type = "l")
+
+

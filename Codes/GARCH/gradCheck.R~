@@ -1,0 +1,27 @@
+######################################################################
+## Check the derivatives
+######################################################################
+
+## Check the derivatives
+check <- as.numeric(dem2gbp[1:1000, ])
+class(check) <- "mgarch"
+test.diff <- function(x = check,
+                      beta = c(.3, .4, .5, .3, .001), incremt = 1e-10,
+                      pt = 1:2) {
+    index0 = rep(0,5)
+    for(i in 1:5) {
+        index = index0
+        index[i] = 1
+        d1 = (logd.mgarch4(x, pt = pt, beta = beta + index * incremt,
+                          which=c(1, 0, 0, 0))$ld -
+              logd.mgarch4(x, pt = pt, beta = beta,
+                          which = c(1, 0, 0, 0))$ld)/incremt
+    d2 = logd.mgarch4(x, pt = pt, beta = beta, which = c(0, 1, 0, 0))$db1[,,i]
+#        d2 = 0
+    print(max(abs(d1 - d2)))
+    }
+}
+
+test.diff()
+
+

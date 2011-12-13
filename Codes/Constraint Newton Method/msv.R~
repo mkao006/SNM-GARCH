@@ -1,0 +1,46 @@
+######################################################################
+## A class for mixture linear state-space is developed
+######################################################################
+
+## Will use the nyse data and the model described in Shumway & Stoffer
+## as benchmark
+
+## At Home
+#load("c:/Users/user/Dropbox/Uni Work/Masters Thesis/Codes/State Space Model/tsa3.rda")
+
+## At Work
+load("~/Dropbox/Uni Work/Masters Thesis/Codes/State Space Model/tsa3.rda")
+
+## Plot the original and the transformed time series
+par(mfrow = c(2, 1))
+plot(nyse)
+y <- log(nyse^2)
+plot(y)
+
+
+
+## This is a class of functions that are used to implement the mixture
+## CNM method in a state-space frame work
+
+## Need an initial function, will use the original estimatin function
+## provided by Shumway and Stoffer.
+initial <- function(){
+}
+
+## A valid function to be implemented within lsch, it determines
+## whether the parameter are valid. (e.g. variance cannot be negative)
+valid <- function(){
+}
+
+## The most important function, the log density function. This
+## function will be based on Kalman filter for the case of linear
+## mixture state-space models, we will then extended to the non-linear
+## case further down the track
+logd <- function(){
+}
+
+
+### NOTES:
+## The kalman filter will be used as part of the logd function, maybe
+## we can test which of the kalman filter is better?
+

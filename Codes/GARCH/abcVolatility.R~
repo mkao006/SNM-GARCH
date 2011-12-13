@@ -1,0 +1,65 @@
+require(tseries)
+require(rgarch)
+require(urca)
+require(ggplot2)
+
+a <- read.csv(file="AIB.csv")
+AIB <- a$Close
+AIBts <- ts(a$Close)
+dates <- as.Date(a$Date, "%d/%m/%Y")
+LAIBts <- log(AIBts)
+retAIB <- diff(LAIBts)
+df1 <- data.frame(dates,AIB)
+
+### Plot AIB stock price:
+gg1.1 <- ggplot(df1,aes(dates,AIB)) + xlab(NULL) + ylab("AIB Stock Price in Euro")
+gg1.2 <- gg1.1+geom_line(colour="darkblue") + opts(title="Daily AIB Stock Price")
+# png(filename = "aib1.png", width = 580, height = 400, units = "px", pointsize = 12, bg = "white")
+gg1.2
+# dev.off()
+
+### Plot AIB stock price returns:
+dates2<-dates[2:length(dates)]
+ReturnsAIB<-as.numeric(retAIB)
+df2<-data.frame(dates2,ReturnsAIB)
+gg2.1<-ggplot(df2,aes(dates2,ReturnsAIB)) + xlab(NULL) + ylab("Log Changes")
+gg2.2<-gg2.1+geom_line(colour="darkred") + opts(title="Daily AIB Stock Price Return")
+# png(filename = "aib2.png", width = 580, height = 400, units = "px", pointsize = 12, bg = "white")
+gg2.2
+#dev.off()
+
+### ACFs and PACFs
+# png(filename = "acfpacf.png", width = 580, height = 700, units = "px", pointsize = 12, bg = "white")
+par(mfrow=c(2,1))
+acf(retAIB, main="ACF of AIB Log Returns", lag = 50)
+pacf(retAIB, main="PACF of AIB Log Returns", lag = 50)
+dev.off()
+ar9<-arima(retAIB, order=c(9,0,0))
+acf(ar9$residuals)
+ressq<-(ar9$residuals)^2
+Box.test(ressq, lag = 8, type = "Ljung-Box")
+# png(filename = "pacfressq.png", width = 580, height = 350, units = "px", pointsize = 12, bg = "white")
+pacf(ressq, main="PACF of Squared Residuals", lag = 30)
+#dev.off()
+retAIB2<-as.numeric(retAIB)
+
+# Note that the GARCH order is revered from what I have discussed above
+specm1 <- ugarchspec(variance.model=list(model="eGARCH", garchOrder=c(2,4), submodel = NULL),
+mean.model=list(armaOrder=c(9,0), include.mean=TRUE, garchInMean = TRUE))
+fitm1 <- ugarchfit(data = retAIB2, spec = specm1)
+fitm1
+fittedmodel <- fitm1@fit
+sigma1<-fittedmodel$sigma
+df2 <- data.frame(dates2,ReturnsAIB,sigma1)
+gg3.1 <- ggplot(df2,aes(dates2)) + xlab(NULL) + ylab("Log Changes")
+gg3.2 <- gg3.1+geom_line(aes(y = ReturnsAIB, colour="Log Returns")) +
+    opts(title="Daily Log Return with 2 Conditional Standard Deviations")
+gg3.3 <- gg3.2 + geom_line(aes(y = sigma1*2, colour="2 S.D.")) +
+    geom_line(aes(y = sigma1*-2, colour="2 S.D.")) + scale_colour_hue("Series:") + opts(legend.position=c(.18,0.8))
+# png(filename = "aib3.png", width = 580, height = 400, units = "px", pointsize = 12, bg = "white")
+gg3.3
+dev.off()
+fitm2 <- ugarchfit(data = retAIB2,out.sample = 10, spec = specm1)
+fitm2
+pred <- ugarchforecast(fitm2, n.ahead = 10,n.roll = 0)
+pred.fpm <- fpm(pred)

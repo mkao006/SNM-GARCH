@@ -1,0 +1,72 @@
+
+## Current version
+logd.mgarch <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2 ## Let it be beta[4] for now
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+    sigma.t <- sqrt(sigma.t)
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3 /rep(pt^2, each = T) -
+                           1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.alpha <- cumsum(c(0, beta[2]^(0:(T-2))))
+        cp.beta <- double(T)
+        cp.beta[1:2] <- 0
+        for(i in 3:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[1:(i - 2)]^2))
+        }
+        dsigmadalpha0 <- cp.alpha #1
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        cp.beta2 <- double(T)
+        cp.beta2[1] <- 0
+        for(i in 2:T){
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[1:(i - 1)]^2))
+        }
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+        dbvec <- array(c(rep(dsigmadalpha0, lpt),
+                         rep(dsigmadalpha1, lpt),
+                         rep(dsigmadbeta1, lpt),
+                         rep(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}

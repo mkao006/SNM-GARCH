@@ -1,0 +1,720 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head 
+profile="http://gmpg.org/xfn/11"><meta http-equiv="Content-Type" 
+content="text/html; charset=UTF-8"><meta name="robots" 
+content="index,follow"><meta name="description" content="There is many 
+flavors of artificial intelligence (AI), however I want to show 
+practical example of the cluster analysis. It is very applicable in 
+finance. ..."><meta name="keywords" content="EN,quant,R 
+Language,stocks,"><title>Artificial intelligence in trading: k-means 
+clustering | (R news &amp; tutorials)</title><link rel="stylesheet" 
+href="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/style.css"
+ type="text/css" media="screen"><style type="text/css">/*<![CDATA[*/body{width:1024px}#mainwrapper{width:1004px}#sidebar{width:180px}#sidebar .side-widget{width:160px}#secondsidebar{width:300px}#secondsidebar .side-widget{width:280px}#leftcontent,#twocol,#threecol,#threecol2,.commentlist{width:456px}#leftcontent img,.wp-caption{max-width:456px}#leftcontent .wp-caption img, #leftcontent .gallery-thumb img{max-width:444px}<!-- fix for IE & Safari --> .threepost embed{width:132.24px !important}.twopost embed{width:209.76px !important}<!-- end fix for Safari/*]]>*/</style><link
+ rel="pingback" href="http://www.r-bloggers.com/xmlrpc.php"> <!--[if IE]><link rel="stylesheet" type="text/css" href="http://www.r-bloggers.com/wp-content/themes/magazine-basic/iestyles.css" /> <![endif]--><script src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/ga.js" async="" type="text/javascript"></script><script type="text/javascript">window.google_analytics_uacct="UA-419807-53";</script><link
+ rel="alternate" type="application/rss+xml" title="R-bloggers » Feed" 
+href="http://www.r-bloggers.com/feed/"><link rel="alternate" 
+type="application/rss+xml" title="R-bloggers » Comments Feed" 
+href="http://www.r-bloggers.com/comments/feed/"><link rel="stylesheet" 
+id="nrelate-style-huf-0-01-0-css" 
+href="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/nrelate-panels-huf.css"
+ type="text/css" media="all"> <!--[if IE 6]><link rel='stylesheet' id='nrelate-ie6-0-01-0-css'  href='http://static.nrelate.com/common_wp/0.01.0/ie6-panels.min.css' type='text/css' media='all' /> <![endif]--><link
+ rel="stylesheet" id="Social Media Counters CSS-css" 
+href="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/style_002.css"
+ type="text/css" media="all"><link rel="stylesheet" id="codebox-css" 
+href="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/codebox.css"
+ type="text/css" media="screen"><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/l10n.js"></script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/jquery.js"></script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/common_frontend.js"></script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/comment-reply.js"></script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/codebox.js"></script><link
+ rel="EditURI" type="application/rsd+xml" title="RSD" 
+href="http://www.r-bloggers.com/xmlrpc.php?rsd"><link rel="wlwmanifest" 
+type="application/wlwmanifest+xml" 
+href="http://www.r-bloggers.com/wp-includes/wlwmanifest.xml"><link 
+rel="index" title="R-bloggers" href="http://www.r-bloggers.com/"><link 
+rel="start" title="Hack-at-it 2005" 
+href="http://www.r-bloggers.com/hack-at-it-2005/"><link rel="prev" 
+title="Color reduction of an image – and Warholize?" 
+href="http://www.r-bloggers.com/color-reduction-of-an-image-and-warholize/"><link
+ rel="next" title="Yet another way to use R in Excel for .NET 
+programmer" 
+href="http://www.r-bloggers.com/yet-another-way-to-use-r-in-excel-for-net-programmer/"><meta
+ name="generator" content="WordPress 3.1.4"><link rel="shortlink" 
+href="http://wp.me/pMm6L-f6G"><meta name="description" content="There is
+ many flavors of artificial intelligence (AI), however I want to show 
+practical example of the cluster analysis. It is very applicable in 
+finance. For example, one of stylized facts of volatility is, that it 
+moves in clusters, meaning that today’s volatility will be more likely 
+as yesterday’s volatility. To gauge these moves you"><meta 
+name="keywords" content="en,quant,r language,stocks"><link 
+rel="canonical" 
+href="http://www.r-bloggers.com/artificial-intelligence-in-trading-k-means-clustering/"><meta
+ property="og:title" content="  Artificial intelligence in trading: 
+k-means clustering"><meta property="og:type" content="article"><meta 
+property="og:url" 
+content="http://www.r-bloggers.com/artificial-intelligence-in-trading-k-means-clustering/"><meta
+ property="og:site_name" content="R-bloggers"><meta property="fb:admins"
+ content=""><meta property="og:description" content="There is many 
+flavors of artificial intelligence (AI), however I want to show 
+practical example of the cluster analysis. It is very applicable in 
+finance. For example, one of stylized facts of volatility is, that it 
+moves in clusters, meaning that today’s volatility will be more likely 
+as yesterday’s volatility. To gauge these moves you [...]"><style type="text/css">.better-tag-cloud-shortcode li, .better-tag-cloud-shortcode li a, li#better-tag-cloud ul.wp-tag-cloud li, li#better-tag-cloud ul.wp-tag-cloud li a{display:inline}</style><script src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/XFBML.js" type="text/javascript"></script><link
+ 
+href="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/connect-css.css"
+ type="text/css" rel="stylesheet"></head><body class="single single-post
+ postid-58074 single-format-standard"><div id="header"><div id="title" 
+class="aligncenter"><h2><a href="http://www.r-bloggers.com/">R-bloggers</a></h2></div><div
+ id="description" class="aligncenter"> R news and tutorials contributed 
+by (209) R bloggers</div><div class="main-navigation"><ul 
+id="menu-top-nav" class="sf-menu sf-js-enabled sf-shadow"><li 
+id="menu-item-48314" class="menu-item menu-item-type-custom 
+menu-item-object-custom menu-item-home menu-item-48314"><a 
+href="http://www.r-bloggers.com/">Home</a></li><li id="menu-item-48312" 
+class="menu-item menu-item-type-post_type menu-item-object-page 
+menu-item-48312"><a href="http://www.r-bloggers.com/about/">About</a></li><li
+ id="menu-item-48313" class="menu-item menu-item-type-post_type 
+menu-item-object-page menu-item-48313"><a 
+href="http://www.r-bloggers.com/add-your-blog/">add your blog!</a></li><li
+ id="menu-item-48311" class="menu-item menu-item-type-post_type 
+menu-item-object-page menu-item-48311"><a 
+href="http://www.r-bloggers.com/contact-us/">Contact us</a></li><li 
+id="menu-item-50111" class="menu-item menu-item-type-custom 
+menu-item-object-custom menu-item-50111"><a 
+href="http://feeds.feedburner.com/RBloggers">RSS</a></li></ul></div></div><div
+ id="mainwrapper"><div id="sidebar"><div class="side-widget"><form 
+method="get" id="searchform" action="http://www.r-bloggers.com/"><div> <input
+ class="search_input" value="Search &amp; Hit Enter" name="s" id="s" 
+onfocus="if (this.value == 'Search &amp; Hit Enter') {this.value = '';}"
+ onblur="if (this.value == '') {this.value = 'Search &amp; Hit Enter';}"
+ type="text"> <input id="searchsubmit" type="hidden"></div></form></div><div
+ class="side-widget"><h2>Welcome!</h2><div class="textwidget">Here you 
+will find daily <strong>news and tutorials about R</strong>, contributed
+ by over 190 bloggers.You can <a 
+href="http://feedburner.google.com/fb/a/mailverify?uri=RBloggers" 
+onclick="javascript:_gaq.push(['_trackEvent','outbound-widget','feedburner.google.com/fb/a/mailverify?uri=RBloggers']);">subscribe
+ for e-mail updates</a>:<form style="border: 1px solid rgb(204, 204, 
+204); padding: 3px; text-align: center;" 
+action="http://feedburner.google.com/fb/a/mailverify" method="post" 
+target="popupwindow" 
+onsubmit="window.open('http://feedburner.google.com/fb/a/mailverify?uri=RBloggers',
+ 'popupwindow', 'scrollbars=yes,width=550,height=520');return true"> <input
+ style="width: 110px;" onclick="if (this.value == 'Your e-mail here') 
+this.value = '';" value="Your e-mail here" name="email" type="text"> <input
+ value="RBloggers" name="uri" type="hidden"><input name="loc" 
+value="en_US" type="hidden"><input value="Subscribe" type="submit"> <a 
+href="http://feeds.feedburner.com/RBloggers" 
+onclick="javascript:_gaq.push(['_trackEvent','outbound-widget','feeds.feedburner.com/RBloggers']);"><img
+ 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/RBloggers.gif"
+ style="border: 0pt none;" alt="" height="26" width="88"></a></form> And
+ get updates to your Facebook:<script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/en_GB.js"></script><script type="text/javascript">FB.init("f4a264d45dde87136dfe1d197cf48ae2");</script><fb:fan
+ class=" FB_fan FB_ElementReady" profile_id="191414254890" stream="" 
+connections="2" width="160" height="162"><iframe style="width: 160px; 
+height: 162px; border: medium none;" name="fbfanIFrame_0" 
+allowtransparency="true" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/fan.html"
+ class="FB_SERVER_IFRAME" frameborder="0" scrolling="no"></iframe></fb:fan><strong>If
+ you are an R blogger yourself</strong> you are invited to <a 
+href="http://www.r-bloggers.com/add-your-blog/">add your own R content 
+feed to this site</a> (<strong>Non-English</strong> R bloggers should 
+add themselves- <a href="http://www.r-bloggers.com/lang/add-your-blog">here</a>)</div></div><div
+ class="side-widget"><h2>TOPICS OF INTEREST</h2><a 
+href="http://www.r-bloggers.com/tag/ggplot2/" class="tag-link-27 
+nktagcloud-18" title="169 topics" rel="tag" style="font-size: 18pt;">ggplot2</a>
+ <a href="http://www.r-bloggers.com/tag/r-project/" class="tag-link-752 
+nktagcloud-16" title="141 topics" rel="tag" style="font-size: 16.03pt;">r-project</a>
+ <a href="http://www.r-bloggers.com/tag/graphics/" class="tag-link-76 
+nktagcloud-15" title="131 topics" rel="tag" style="font-size: 15.32pt;">graphics</a>
+ <a href="http://www.r-bloggers.com/tag/programming/" 
+class="tag-link-475 nktagcloud-14" title="120 topics" rel="tag" 
+style="font-size: 14.55pt;">programming</a> <a 
+href="http://www.r-bloggers.com/tag/books/" class="tag-link-680 
+nktagcloud-13" title="104 topics" rel="tag" style="font-size: 13.42pt;">Books</a>
+ <a href="http://www.r-bloggers.com/tag/visualization/" 
+class="tag-link-22 nktagcloud-13" title="98 topics" rel="tag" 
+style="font-size: 13pt;">visualization</a> <a 
+href="http://www.r-bloggers.com/tag/tutorial/" class="tag-link-423 
+nktagcloud-11" title="76 topics" rel="tag" style="font-size: 11.45pt;">tutorial</a>
+ <a href="http://www.r-bloggers.com/tag/r-language/" class="tag-link-99 
+nktagcloud-11" title="73 topics" rel="tag" style="font-size: 11.24pt;">R
+ Language</a> <a href="http://www.r-bloggers.com/tag/events/" 
+class="tag-link-393 nktagcloud-11" title="71 topics" rel="tag" 
+style="font-size: 11.1pt;">events</a> <a 
+href="http://www.r-bloggers.com/tag/latex/" class="tag-link-63 
+nktagcloud-10" title="66 topics" rel="tag" style="font-size: 10.75pt;">LaTex</a>
+ <a href="http://www.r-bloggers.com/tag/rstats/" class="tag-link-765 
+nktagcloud-10" title="63 topics" rel="tag" style="font-size: 10.54pt;">rstats</a>
+ <a href="http://www.r-bloggers.com/tag/bms-extensions/" 
+class="tag-link-3020 nktagcloud-10" title="60 topics" rel="tag" 
+style="font-size: 10.32pt;">BMS Extensions</a> <a 
+href="http://www.r-bloggers.com/tag/data/" class="tag-link-114 
+nktagcloud-10" title="59 topics" rel="tag" style="font-size: 10.25pt;">Data</a>
+ <a href="http://www.r-bloggers.com/tag/r-english/" class="tag-link-2739
+ nktagcloud-10" title="56 topics" rel="tag" style="font-size: 10.04pt;">R-english</a>
+ <a href="http://www.r-bloggers.com/tag/sweave/" class="tag-link-66 
+nktagcloud-9" title="54 topics" rel="tag" style="font-size: 9.9pt;">sweave</a>
+ <a href="http://www.r-bloggers.com/tag/computing/" class="tag-link-44 
+nktagcloud-9" title="53 topics" rel="tag" style="font-size: 9.83pt;">computing</a>
+ <a href="http://www.r-bloggers.com/tag/random/" class="tag-link-281 
+nktagcloud-9" title="51 topics" rel="tag" style="font-size: 9.69pt;">random</a>
+ <a href="http://www.r-bloggers.com/tag/climate-trends/" 
+class="tag-link-412 nktagcloud-9" title="47 topics" rel="tag" 
+style="font-size: 9.41pt;">Climate Trends</a> <a 
+href="http://www.r-bloggers.com/tag/cran/" class="tag-link-161 
+nktagcloud-9" title="44 topics" rel="tag" style="font-size: 9.2pt;">cran</a>
+ <a href="http://www.r-bloggers.com/tag/packages/" class="tag-link-279 
+nktagcloud-9" title="44 topics" rel="tag" style="font-size: 9.2pt;">packages</a>
+ <a href="http://www.r-bloggers.com/tag/plot/" class="tag-link-28 
+nktagcloud-9" title="44 topics" rel="tag" style="font-size: 9.2pt;">plot</a>
+ <a href="http://www.r-bloggers.com/tag/english/" class="tag-link-2600 
+nktagcloud-8" title="41 topics" rel="tag" style="font-size: 8.99pt;">English</a>
+ <a href="http://www.r-bloggers.com/tag/stocks/" class="tag-link-2206 
+nktagcloud-8" title="41 topics" rel="tag" style="font-size: 8.99pt;">stocks</a>
+ <a href="http://www.r-bloggers.com/tag/global-warming/" 
+class="tag-link-416 nktagcloud-8" title="40 topics" rel="tag" 
+style="font-size: 8.92pt;">Global Warming</a> <a 
+href="http://www.r-bloggers.com/tag/r-programming/" class="tag-link-94 
+nktagcloud-8" title="39 topics" rel="tag" style="font-size: 8.85pt;">R 
+Programming</a> <a href="http://www.r-bloggers.com/tag/simulation/" 
+class="tag-link-134 nktagcloud-8" title="39 topics" rel="tag" 
+style="font-size: 8.85pt;">Simulation</a> <a 
+href="http://www.r-bloggers.com/tag/rmedia/" class="tag-link-280 
+nktagcloud-8" title="38 topics" rel="tag" style="font-size: 8.77pt;">Rmedia</a>
+ <a href="http://www.r-bloggers.com/tag/finance/" class="tag-link-394 
+nktagcloud-8" title="36 topics" rel="tag" style="font-size: 8.63pt;">finance</a>
+ <a href="http://www.r-bloggers.com/tag/mcmc/" class="tag-link-712 
+nktagcloud-8" title="35 topics" rel="tag" style="font-size: 8.56pt;">MCMC</a>
+ <a href="http://www.r-bloggers.com/tag/software/" class="tag-link-274 
+nktagcloud-8" title="35 topics" rel="tag" style="font-size: 8.56pt;">Software</a>
+ <a href="http://www.r-bloggers.com/tag/linux/" class="tag-link-217 
+nktagcloud-8" title="35 topics" rel="tag" style="font-size: 8.56pt;">linux</a>
+ <a href="http://www.r-bloggers.com/tag/python/" class="tag-link-425 
+nktagcloud-8" title="34 topics" rel="tag" style="font-size: 8.49pt;">Python</a>
+ <a href="http://www.r-bloggers.com/tag/rcpp/" class="tag-link-454 
+nktagcloud-8" title="34 topics" rel="tag" style="font-size: 8.49pt;">Rcpp</a>
+ <a href="http://www.r-bloggers.com/tag/announcements/" 
+class="tag-link-270 nktagcloud-8" title="33 topics" rel="tag" 
+style="font-size: 8.42pt;">Announcements</a> <a 
+href="http://www.r-bloggers.com/tag/rclimate-script/" 
+class="tag-link-552 nktagcloud-8" title="33 topics" rel="tag" 
+style="font-size: 8.42pt;">RClimate Script</a> <a 
+href="http://www.r-bloggers.com/tag/time-series-charts/" 
+class="tag-link-418 nktagcloud-8" title="33 topics" rel="tag" 
+style="font-size: 8.42pt;">Time Series Charts</a> <a 
+href="http://www.r-bloggers.com/tag/20/" class="tag-link-1063 
+nktagcloud-8" title="31 topics" rel="tag" style="font-size: 8.28pt;">20</a>
+ <a href="http://www.r-bloggers.com/tag/bioinformatics/" 
+class="tag-link-424 nktagcloud-8" title="31 topics" rel="tag" 
+style="font-size: 8.28pt;">Bioinformatics</a> <a 
+href="http://www.r-bloggers.com/tag/applications/" class="tag-link-395 
+nktagcloud-8" title="31 topics" rel="tag" style="font-size: 8.28pt;">applications</a>
+ <a href="http://www.r-bloggers.com/tag/r-tutorial-series/" 
+class="tag-link-916 nktagcloud-8" title="30 topics" rel="tag" 
+style="font-size: 8.21pt;">R Tutorial Series</a> <a 
+href="http://www.r-bloggers.com/tag/ggplot/" class="tag-link-296 
+nktagcloud-8" title="30 topics" rel="tag" style="font-size: 8.21pt;">ggplot</a>
+ <a href="http://www.r-bloggers.com/tag/predictive-analytics/" 
+class="tag-link-607 nktagcloud-8" title="30 topics" rel="tag" 
+style="font-size: 8.21pt;">predictive analytics</a> <a 
+href="http://www.r-bloggers.com/tag/video/" class="tag-link-486 
+nktagcloud-8" title="30 topics" rel="tag" style="font-size: 8.21pt;">video</a>
+ <a href="http://www.r-bloggers.com/tag/anova/" class="tag-link-432 
+nktagcloud-8" title="29 topics" rel="tag" style="font-size: 8.14pt;">ANOVA</a>
+ <a href="http://www.r-bloggers.com/tag/dylan/" class="tag-link-90 
+nktagcloud-8" title="29 topics" rel="tag" style="font-size: 8.14pt;">Dylan</a>
+ <a href="http://www.r-bloggers.com/tag/tools/" class="tag-link-483 
+nktagcloud-8" title="29 topics" rel="tag" style="font-size: 8.14pt;">Tools</a>
+ <a href="http://www.r-bloggers.com/tag/trend-chart/" 
+class="tag-link-414 nktagcloud-8" title="29 topics" rel="tag" 
+style="font-size: 8.14pt;">Trend Chart</a> <a 
+href="http://www.r-bloggers.com/tag/le-monde/" class="tag-link-875 
+nktagcloud-8" title="28 topics" rel="tag" style="font-size: 8.07pt;">Le 
+Monde</a> <a href="http://www.r-bloggers.com/tag/climatechange/" 
+class="tag-link-409 nktagcloud-8" title="27 topics" rel="tag" 
+style="font-size: 8pt;">Climatechange</a> <a 
+href="http://www.r-bloggers.com/tag/blog/" class="tag-link-48 
+nktagcloud-8" title="27 topics" rel="tag" style="font-size: 8pt;">blog</a></div><div
+ class="side-widget"><form method="get" id="searchform" 
+action="http://www.r-bloggers.com/"><div> <input class="search_input" 
+value="Search &amp; Hit Enter" name="s" id="s" onfocus="if (this.value 
+== 'Search &amp; Hit Enter') {this.value = '';}" onblur="if (this.value 
+== '') {this.value = 'Search &amp; Hit Enter';}" type="text"> <input 
+id="searchsubmit" type="hidden"></div></form></div><div 
+class="side-widget"><h2>Recent Posts</h2><ul><li><a 
+href="http://www.r-bloggers.com/yet-another-way-to-use-r-in-excel-for-net-programmer/"
+ title="Yet another way to use R in Excel for .NET programmer">Yet 
+another way to use R in Excel for .NET programmer</a></li><li><a 
+href="http://www.r-bloggers.com/artificial-intelligence-in-trading-k-means-clustering/"
+ title="Artificial intelligence in trading: k-means clustering">Artificial
+ intelligence in trading: k-means clustering</a></li><li><a 
+href="http://www.r-bloggers.com/color-reduction-of-an-image-and-warholize/"
+ title="Color reduction of an image – and Warholize?">Color reduction of
+ an image – and Warholize?</a></li><li><a 
+href="http://www.r-bloggers.com/arma-models-for-trading-part-vi/" 
+title="ARMA Models for Trading, Part VI">ARMA Models for Trading, Part 
+VI</a></li><li><a 
+href="http://www.r-bloggers.com/even-faster-linear-model-fits-with-r-using-rcppeigen/"
+ title="Even faster linear model fits with R using RcppEigen">Even 
+faster linear model fits with R using RcppEigen</a></li><li><a 
+href="http://www.r-bloggers.com/a-quantstrat-to-build-on-part-6/" 
+title="A Quantstrat to Build On Part 6">A Quantstrat to Build On Part 6</a></li><li><a
+ href="http://www.r-bloggers.com/new-r-user-group-in-argentina/" 
+title="New R User Group in Argentina">New R User Group in Argentina</a></li><li><a
+ 
+href="http://www.r-bloggers.com/example-9-1-scatterplots-with-binning-for-large-datasets/"
+ title="Example 9.1: Scatterplots with binning for large datasets">Example
+ 9.1: Scatterplots with binning for large datasets</a></li><li><a 
+href="http://www.r-bloggers.com/google-correlate-certainly-does-not-imply-causation/"
+ title="Google Correlate Certainly Does Not Imply Causation">Google 
+Correlate Certainly Does Not Imply Causation</a></li><li><a 
+href="http://www.r-bloggers.com/another-way-to-use-r-in-excel-for-net-programmer/"
+ title="Another way to use R in Excel for .NET programmer">Another way 
+to use R in Excel for .NET programmer</a></li><li><a 
+href="http://www.r-bloggers.com/in-4-steps-your-application-including-r-is-running-on-a-cloud-computing-cluster/"
+ title="In 4 Steps your Application (including R) is running on a Cloud 
+Computing Cluster">In 4 Steps your Application (including R) is running 
+on a Cloud Computing Cluster</a></li><li><a 
+href="http://www.r-bloggers.com/bounded-target-support/" title="Bounded 
+target support">Bounded target support</a></li><li><a 
+href="http://www.r-bloggers.com/slides-from-my-r-tutorial-on-twitter-text-mining-rstats/"
+ title="slides from my R tutorial on Twitter text mining #rstats">slides
+ from my R tutorial on Twitter text mining #rstats</a></li><li><a 
+href="http://www.r-bloggers.com/r-net/" title="R.NET">R.NET</a></li><li><a
+ href="http://www.r-bloggers.com/contributions-to-the-r-project/" 
+title="Contributions to the R Project">Contributions to the R Project</a></li></ul></div><div
+ class="side-widget"><h2>Other sites</h2><ul class="xoxo blogroll"><li><a
+ href="http://www.forex-bloggers.com/" title="Forex news and updates 
+from bloggers" target="" 
+onclick="javascript:_gaq.push(['_trackEvent','outbound-blogroll','http://www.forex-bloggers.com/']);">Forex
+ blogs</a></li><li><a href="http://www.sas-x.com/" title="SAS news 
+gathered from bloggers" target="" 
+onclick="javascript:_gaq.push(['_trackEvent','outbound-blogroll','http://www.sas-x.com/']);">SAS
+ blogs</a></li></ul></div><div class="side-widget"><h2>Popular Searches</h2><ul><li><a
+ href="http://www.r-bloggers.com/search/RStudio">RStudio</a></li><li><a 
+href="http://www.r-bloggers.com/search/ggplot2">ggplot2</a></li><li><a 
+href="http://www.r-bloggers.com/search/tutorial">tutorial</a></li><li><a
+ href="http://www.r-bloggers.com/search/Sweave">Sweave</a></li><li><a 
+href="http://www.r-bloggers.com/search/regression">regression</a></li><li><a
+ href="http://www.r-bloggers.com/search/PCA">PCA</a></li><li><a 
+href="http://www.r-bloggers.com/search/lattice">lattice</a></li><li><a 
+href="http://www.r-bloggers.com/search/trading">trading</a></li><li><a 
+href="http://www.r-bloggers.com/search/map">map</a></li><li><a 
+href="http://www.r-bloggers.com/search/twitter">twitter</a></li><li><a 
+href="http://www.r-bloggers.com/search/finance">finance</a></li><li><a 
+href="http://www.r-bloggers.com/search/time%20series">time series</a></li><li><a
+ href="http://www.r-bloggers.com/search/googleVis">googleVis</a></li><li><a
+ href="http://www.r-bloggers.com/search/SQL">SQL</a></li><li><a 
+href="http://www.r-bloggers.com/search/LaTeX">LaTeX</a></li><li><a 
+href="http://www.r-bloggers.com/search/GUI">GUI</a></li><li><a 
+href="http://www.r-bloggers.com/search/animation">animation</a></li><li><a
+ href="http://www.r-bloggers.com/search/ANOVA">ANOVA</a></li><li><a 
+href="http://www.r-bloggers.com/search/GIS">GIS</a></li><li><a 
+href="http://www.r-bloggers.com/search/maps">maps</a></li><li><a 
+href="http://www.r-bloggers.com/search/quantmod">quantmod</a></li><li><a
+ href="http://www.r-bloggers.com/search/excel">excel</a></li><li><a 
+href="http://www.r-bloggers.com/search/igraph">igraph</a></li><li><a 
+href="http://www.r-bloggers.com/search/ggplot">ggplot</a></li><li><a 
+href="http://www.r-bloggers.com/search/plyr">plyr</a></li><li><a 
+href="http://www.r-bloggers.com/search/spatial">spatial</a></li><li><a 
+href="http://www.r-bloggers.com/search/boxplot">boxplot</a></li><li><a 
+href="http://www.r-bloggers.com/search/facebook">facebook</a></li><li><a
+ href="http://www.r-bloggers.com/search/eclipse">eclipse</a></li><li><a 
+href="http://www.r-bloggers.com/search/cluster">cluster</a></li></ul></div></div><div
+ id="leftcontent"><script type="text/javascript">google_ad_client="pub-2058725773761582";google_ad_slot="9440758446";google_ad_width=728;google_ad_height=90;</script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/show_ads.js"></script><ins
+ style="display: inline-table; border: medium none; height: 90px; 
+margin: 0pt; padding: 0pt; position: relative; visibility: visible; 
+width: 728px;"><ins id="aswift_0_anchor" style="display: block; border: 
+medium none; height: 90px; margin: 0pt; padding: 0pt; position: 
+relative; visibility: visible; width: 728px;"><iframe 
+allowtransparency="true" hspace="0" marginwidth="0" marginheight="0" 
+onload="var 
+i=this.id,s=window.google_iframe_oncopy,H=s&amp;&amp;s.handlers,h=H&amp;&amp;H[i],w=this.contentWindow,d;try{d=w.document}catch(e){}if(h&amp;&amp;d&amp;&amp;(!d.body||!d.body.firstChild)){if(h.call){i+='.call';setTimeout(h,0)}else
+ 
+if(h.match){i+='.nav';w.location.replace(h)}s.log&amp;&amp;s.log.push(i)}"
+ vspace="0" id="aswift_0" name="aswift_0" style="left: 0pt; position: 
+absolute; top: 0pt;" frameborder="0" height="90" scrolling="no" 
+width="728"></iframe></ins></ins><div id="post-58074" class="post-58074 
+post type-post status-publish format-standard hentry category-r-bloggers
+ category-uncategorized tag-en tag-quant tag-r-language tag-stocks"><h1>Artificial
+ intelligence in trading: k-means clustering</h1><div class="meta"><div 
+class="date">July 6, 2011</div>By <a 
+href="http://www.r-bloggers.com/author/dzidorius-martinaitis/" 
+title="Posts by Dzidorius Martinaitis">Dzidorius Martinaitis</a><div 
+class="like"> <iframe 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/like_002.html"
+ allowtransparency="true" style="border: medium none; overflow: hidden; 
+width: 450px; height: 24px;" frameborder="0" scrolling="no"></iframe></div></div><div
+ class="entry"><p class="syndicated-attribution"></p><div style="border:
+ 1px solid; background: none repeat scroll 0pt 0pt rgb(237, 237, 237); 
+margin: 1px; font-size: 12px;"> This article was first published on <strong><a
+ 
+href="http://www.investuotojas.eu/2011/07/06/artificial-intelligence-in-trading-k-means-clustering/">
+ Quantitative thoughts » EN</a></strong>, and kindly contributed to <a 
+href="http://www.r-bloggers.com/">R-bloggers</a></div><p>There is many 
+flavors of artificial intelligence (AI), however I want to show 
+practical example of the cluster analysis. It is very applicable in 
+finance. For example, one of stylized facts of volatility is, that it 
+moves in clusters, meaning that today’s volatility will be more likely 
+as yesterday’s volatility. To gauge these moves you can use hidden 
+Markov chain (complicated method) or k-means (probably to simplified). 
+However, GARCH model successfully exploits this stylized fact to make 
+prediction of tomorrow’s volatility (it takes into account another fact 
+as well – volatility is mean reverting process).</p><p>K-means is based 
+on unsupervised learning – you give the data and k-means decides how to 
+classify it. The idea is to split data into clusters based on cluster 
+center and assign each point to nearest center.&nbsp; There is drawback 
+with such approach – the algorithm tries to establish the centers 
+of&nbsp; clusters with initial data set. If the data is very noisy and 
+the centers are not stable, then every try will give you different 
+results.</p><p>As you probably know, the distribution of financial data 
+is very unstable. How to tackle this problem? We should be looking at 
+daily returns instead of prices. The figure below shows daily returns of
+ SPY stock.</p><div class="wp_codebox_msgheader wp_codebox_hide"><span 
+class="right"><sup><a 
+href="http://www.ericbess.com/ericblog/2008/03/03/wp-codebox/#examples" 
+title="WP-CodeBox HowTo?" ref="nofollow" target="_blank"><span 
+style="color: rgb(153, 204, 0);">?</span></a></sup></span><span 
+class="left"><a href="javascript:;" 
+onclick="javascript:showCodeTxt('p500code4'); return false;" 
+ref="nofollow" target="_blank">View Code</a> RSPLUS</span><div 
+class="codebox_clear"></div></div><div style="display: block;" 
+class="wp_codebox"><table><tbody><tr id="p5004"><td class="code" 
+id="p500code4"><pre class="rsplus" style="font-family: monospace;"><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/setwd.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">setwd</span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">'/home/git/Rproject/kmeans/'</span><span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/require.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">require</span></a><span style="color: rgb(0, 136, 0);">(</span>quantmod<span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/require.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">require</span></a><span style="color: rgb(0, 136, 0);">(</span>ggplot2<span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/Sys.setenv.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">Sys.<span style="">setenv</span></span></a><span style="color: rgb(0, 136, 0);">(</span>TZ<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">"GMT"</span><span style="color: rgb(0, 136, 0);">)</span>
+getSymbols<span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">'SPY'</span>,from<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">'2000-01-01'</span><span style="color: rgb(0, 136, 0);">)</span>
+&nbsp;
+x<span style="color: rgb(0, 136, 0);">=</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/data.frame.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">data.<span style="">frame</span></span></a><span style="color: rgb(0, 136, 0);">(</span>d<span style="color: rgb(0, 136, 0);">=</span>index<span style="color: rgb(0, 136, 0);">(</span>Cl<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/return.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">return</span></a><span style="color: rgb(0, 136, 0);">=</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/as.numeric.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">as.<span style="">numeric</span></span></a><span style="color: rgb(0, 136, 0);">(</span>Delt<span style="color: rgb(0, 136, 0);">(</span>Cl<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/stats/html/summary.lm.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">png</span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">'daily_density.png'</span>,width<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">500</span><span style="color: rgb(0, 136, 0);">)</span>
+ggplot<span style="color: rgb(0, 136, 0);">(</span>x,aes<span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/return.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">return</span></a><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>stat_density<span style="color: rgb(0, 136, 0);">(</span>colour<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">"steelblue"</span>, size<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">2</span>, fill<span style="color: rgb(0, 136, 0);">=</span>NA<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>xlab<span style="color: rgb(0, 136, 0);">(</span>label<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">'Daily returns'</span><span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/stats/html/summary.lm.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">dev.<span style="">off</span></span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 136, 0);">)</span></pre></td></tr></tbody></table></div><p><a
+ 
+href="http://s176.photobucket.com/albums/w180/investuotojas/?action=view&amp;current=daily_density.png"
+ ref="nofollow" target="_blank"><img 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/daily_density.png"
+ alt="Photobucket" border="0"></a></p><p>I was ready to show another 
+trick – how to neutralize long tails by replacing existing distribution 
+with uniform distribution, but quick test revealed, that this leads to 
+uninterpretable results.</p><p>OK, lets move further – how many clusters
+ should we have? Can AI give us a clue? Of course, but keep in mind that
+ then your future decision will be <a 
+href="http://www.sciencedaily.com/articles/a/anchoring.htm" 
+ref="nofollow" target="_blank">anchored</a>.</p><div 
+class="wp_codebox_msgheader wp_codebox_hide"><span class="right"><sup><a
+ href="http://www.ericbess.com/ericblog/2008/03/03/wp-codebox/#examples"
+ title="WP-CodeBox HowTo?" ref="nofollow" target="_blank"><span 
+style="color: rgb(153, 204, 0);">?</span></a></sup></span><span 
+class="left"><a href="javascript:;" 
+onclick="javascript:showCodeTxt('p500code5'); return false;" 
+ref="nofollow" target="_blank">View Code</a> RSPLUS</span><div 
+class="codebox_clear"></div></div><div style="display: block;" 
+class="wp_codebox"><table><tbody><tr id="p5005"><td class="code" 
+id="p500code5"><pre class="rsplus" style="font-family: monospace;">nasa<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 0, 255); font-weight: bold;">tail</span><span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/cbind.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">cbind</span></a><span style="color: rgb(0, 136, 0);">(</span>Delt<span style="color: rgb(0, 136, 0);">(</span>Op<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span>,Hi<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,Delt<span style="color: rgb(0, 136, 0);">(</span>Op<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span>,Lo<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,Delt<span style="color: rgb(0, 136, 0);">(</span>Op<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span>,Cl<span style="color: rgb(0, 136, 0);">(</span>SPY<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,<span style="color: rgb(0, 136, 0);">-</span><span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">)</span>
+&nbsp;
+<span style="color: rgb(34, 139, 34);">#optimal number of clusters</span>
+wss <span style="color: rgb(0, 136, 0);">=</span> <span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/nrow.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">nrow</span></a><span style="color: rgb(0, 136, 0);">(</span>nasa<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">-</span><span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">*</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/sum.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">sum</span></a><span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/apply.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">apply</span></a><span style="color: rgb(0, 136, 0);">(</span>nasa,<span style="color: rgb(255, 0, 0);">2</span>,<span style="color: rgb(0, 0, 255); font-weight: bold;">var</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/for.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">for</span></a> <span style="color: rgb(0, 136, 0);">(</span>i <span style="color: rgb(0, 0, 255); font-weight: bold;">in</span> <span style="color: rgb(255, 0, 0);">2</span><span style="color: rgb(0, 136, 0);">:</span><span style="color: rgb(255, 0, 0);">15</span><span style="color: rgb(0, 136, 0);">)</span> wss<span style="color: rgb(0, 136, 0);">[</span>i<span style="color: rgb(0, 136, 0);">]</span> <span style="color: rgb(0, 136, 0);">=</span> <a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/sum.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">sum</span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 0, 255); font-weight: bold;">kmeans</span><span style="color: rgb(0, 136, 0);">(</span>nasa, centers<span style="color: rgb(0, 136, 0);">=</span>i<span style="color: rgb(0, 136, 0);">)</span>$withinss<span style="color: rgb(0, 136, 0);">)</span>
+wss<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/data.frame.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">data.<span style="">frame</span></span></a><span style="color: rgb(0, 136, 0);">(</span>number<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">:</span><span style="color: rgb(255, 0, 0);">15</span>,value<span style="color: rgb(0, 136, 0);">=</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/as.numeric.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">as.<span style="">numeric</span></span></a><span style="color: rgb(0, 136, 0);">(</span>wss<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>
+&nbsp;
+<a href="http://astrostatistics.psu.edu/su07/R/html/stats/html/summary.lm.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">png</span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">'numberOfClusters.png'</span>,width<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">500</span><span style="color: rgb(0, 136, 0);">)</span>
+ggplot<span style="color: rgb(0, 136, 0);">(</span>wss,aes<span style="color: rgb(0, 136, 0);">(</span>number,value<span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>geom_point<span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>
+  xlab<span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">"Number of Clusters"</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>ylab<span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(255, 0, 0);">"Within groups sum of squares"</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">+</span>geom_smooth<span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 136, 0);">)</span>
+<a href="http://astrostatistics.psu.edu/su07/R/html/stats/html/summary.lm.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">dev.<span style="">off</span></span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 136, 0);">)</span></pre></td></tr></tbody></table></div><p><a
+ 
+href="http://s176.photobucket.com/albums/w180/investuotojas/?action=view&amp;current=numberOfClusters.png"
+ ref="nofollow" target="_blank"><img 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/numberOfClusters.png"
+ alt="Photobucket" border="0"></a></p><p>The figure above implies, that 
+we should have more than 15 clusters for financial data. Well, for sake 
+of simplicity and education purpose lets use only 5.</p><div 
+class="wp_codebox_msgheader wp_codebox_hide"><span class="right"><sup><a
+ href="http://www.ericbess.com/ericblog/2008/03/03/wp-codebox/#examples"
+ title="WP-CodeBox HowTo?" ref="nofollow" target="_blank"><span 
+style="color: rgb(153, 204, 0);">?</span></a></sup></span><span 
+class="left"><a href="javascript:;" 
+onclick="javascript:showCodeTxt('p500code6'); return false;" 
+ref="nofollow" target="_blank">View Code</a> RSPLUS</span><div 
+class="codebox_clear"></div></div><div style="display: block;" 
+class="wp_codebox"><table><tbody><tr id="p5006"><td class="code" 
+id="p500code6"><pre class="rsplus" style="font-family: monospace;">kmeanObject<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 0, 255); font-weight: bold;">kmeans</span><span style="color: rgb(0, 136, 0);">(</span>nasa,<span style="color: rgb(255, 0, 0);">5</span>,iter.<span style="">max</span><span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(255, 0, 0);">10</span><span style="color: rgb(0, 136, 0);">)</span>
+kmeanObject$centers
+autocorrelation<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 0, 255); font-weight: bold;">head</span><span style="color: rgb(0, 136, 0);">(</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/cbind.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">cbind</span></a><span style="color: rgb(0, 136, 0);">(</span>kmeanObject$cluster,<span style="color: rgb(0, 0, 255); font-weight: bold;">lag</span><span style="color: rgb(0, 136, 0);">(</span>as.<span style="">xts</span><span style="color: rgb(0, 136, 0);">(</span>kmeanObject$cluster<span style="color: rgb(0, 136, 0);">)</span>,<span style="color: rgb(0, 136, 0);">-</span><span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,<span style="color: rgb(0, 136, 0);">-</span><span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">)</span>
+<span style="color: rgb(0, 0, 255); font-weight: bold;">xtabs</span><span style="color: rgb(0, 136, 0);">(</span>~autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">+</span><span style="color: rgb(0, 136, 0);">(</span>autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">2</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>
+&nbsp;
+y<span style="color: rgb(0, 136, 0);">=</span><a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/apply.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">apply</span></a><span style="color: rgb(0, 136, 0);">(</span><span style="color: rgb(0, 0, 255); font-weight: bold;">xtabs</span><span style="color: rgb(0, 136, 0);">(</span>~autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">+</span><span style="color: rgb(0, 136, 0);">(</span>autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">2</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>,<span style="color: rgb(255, 0, 0);">1</span>,<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/sum.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">sum</span></a><span style="color: rgb(0, 136, 0);">)</span>
+x<span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 0, 255); font-weight: bold;">xtabs</span><span style="color: rgb(0, 136, 0);">(</span>~autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">+</span><span style="color: rgb(0, 136, 0);">(</span>autocorrelation<span style="color: rgb(0, 136, 0);">[</span>,<span style="color: rgb(255, 0, 0);">2</span><span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">)</span><span style="color: rgb(0, 136, 0);">)</span>
+&nbsp;
+z<span style="color: rgb(0, 136, 0);">=</span>x
+<a href="http://astrostatistics.psu.edu/su07/R/html/graphics/html/for.html" ref="nofollow" target="_blank"><span style="color: rgb(0, 0, 255); font-weight: bold;">for</span></a><span style="color: rgb(0, 136, 0);">(</span>i <span style="color: rgb(0, 0, 255); font-weight: bold;">in</span> <span style="color: rgb(255, 0, 0);">1</span><span style="color: rgb(0, 136, 0);">:</span><span style="color: rgb(255, 0, 0);">5</span><span style="color: rgb(0, 136, 0);">)</span>
+<span style="color: rgb(0, 136, 0);">{</span>
+  z<span style="color: rgb(0, 136, 0);">[</span>i,<span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">=</span><span style="color: rgb(0, 136, 0);">(</span>x<span style="color: rgb(0, 136, 0);">[</span>i,<span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">/</span>y<span style="color: rgb(0, 136, 0);">[</span>i<span style="color: rgb(0, 136, 0);">]</span><span style="color: rgb(0, 136, 0);">)</span>
+<span style="color: rgb(0, 136, 0);">}</span></pre></td></tr></tbody></table></div><p>The
+ code above actually shows, how to run k-means clustering in R. The 
+first line runs the sorting and the second shows clusters’ centroids:</p><table
+ border="1" cellspacing="0"><caption class="captiondataframe"></caption><tbody><tr><td><table
+ class="dataframe" border="0"><tbody><tr class="firstline"><th></th><th>High</th><th>Low</th><th>Close</th></tr><tr><td
+ class="firstcolumn">1</td><td class="cellinside">0.0388</td><td 
+class="cellinside">-0.0094</td><td class="cellinside">0.0313</td></tr><tr><td
+ class="firstcolumn">2</td><td class="cellinside">0.0049</td><td 
+class="cellinside">-0.0050</td><td class="cellinside">0.0006</td></tr><tr><td
+ class="firstcolumn">3</td><td class="cellinside">0.0143</td><td 
+class="cellinside">-0.0038</td><td class="cellinside">0.0106</td></tr><tr><td
+ class="firstcolumn">4</td><td class="cellinside">0.0038</td><td 
+class="cellinside">-0.0148</td><td class="cellinside">-0.0103</td></tr><tr><td
+ class="firstcolumn">5</td><td class="cellinside">0.0053</td><td 
+class="cellinside">-0.0348</td><td class="cellinside">-0.0280</td></tr></tbody></table></td></tr></tbody></table><p>So,
+ we have 5 clusters: 1. extremely positive day, 2. flat day, 3. positive
+ day and 4,5 are clusters with negative outcome.<br> The third and 
+fourth lines in the code above checks and prints autocorrelation between
+ today(N0) and tomorrow(N1):</p><table border="1" cellspacing="0"><caption
+ class="captiondataframe"></caption><tbody><tr><td><table 
+class="dataframe" border="0"><tbody><tr class="firstline"><th></th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr><tr><td
+ class="firstcolumn"><strong>1</strong></td><td class="cellinside">11</td><td
+ class="cellinside">24</td><td class="cellinside">29</td><td 
+class="cellinside">21</td><td class="cellinside">12</td></tr><tr><td 
+class="firstcolumn"><strong>2</strong></td><td class="cellinside">16</td><td
+ class="cellinside">991</td><td class="cellinside">288</td><td 
+class="cellinside">351</td><td class="cellinside">42</td></tr><tr><td 
+class="firstcolumn"><strong>3</strong></td><td class="cellinside">17</td><td
+ class="cellinside">338</td><td class="cellinside">144</td><td 
+class="cellinside">168</td><td class="cellinside">28</td></tr><tr><td 
+class="firstcolumn"><strong>4</strong></td><td class="cellinside">27</td><td
+ class="cellinside">310</td><td class="cellinside">202</td><td 
+class="cellinside">207</td><td class="cellinside">32</td></tr><tr><td 
+class="firstcolumn"><strong>5</strong></td><td class="cellinside">26</td><td
+ class="cellinside">24</td><td class="cellinside">33</td><td 
+class="cellinside">31</td><td class="cellinside">23</td></tr></tbody></table></td></tr></tbody></table><p>If
+ you prefer percentages instead of plain numbers, the following table 
+gives you that:</p><table border="1" cellspacing="0"><caption 
+class="captiondataframe"></caption><tbody><tr><td><table 
+class="dataframe" border="0"><tbody><tr class="firstline"><th></th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th></tr><tr><td
+ class="firstcolumn"><strong>1</strong></td><td class="cellinside">0.11</td><td
+ class="cellinside">0.25</td><td class="cellinside">0.30</td><td 
+class="cellinside">0.22</td><td class="cellinside">0.12</td></tr><tr><td
+ class="firstcolumn"><strong>2</strong></td><td class="cellinside">0.01</td><td
+ class="cellinside"><strong>0.59</strong></td><td class="cellinside">0.17</td><td
+ class="cellinside">0.21</td><td class="cellinside">0.02</td></tr><tr><td
+ class="firstcolumn"><strong>3</strong></td><td class="cellinside">0.02</td><td
+ class="cellinside"><strong>0.49</strong></td><td class="cellinside">0.21</td><td
+ class="cellinside">0.24</td><td class="cellinside">0.04</td></tr><tr><td
+ class="firstcolumn"><strong>4</strong></td><td class="cellinside">0.03</td><td
+ class="cellinside">0.40</td><td class="cellinside">0.26</td><td 
+class="cellinside">0.27</td><td class="cellinside">0.04</td></tr><tr><td
+ class="firstcolumn"><strong>5</strong></td><td class="cellinside">0.19</td><td
+ class="cellinside">0.18</td><td class="cellinside">0.24</td><td 
+class="cellinside">0.23</td><td class="cellinside">0.17</td></tr></tbody></table></td></tr></tbody></table><p>How
+ to read such tables? Lets take for example line 2. The first table 
+says, that the centers of the cluster are following: 
+0.0049;-0.0050;0.0006, meaning that during such day, the price of the 
+asset is moving in very narrow range. Now, the table 2 or 3 shows, what 
+are the chances for the next day (N1). Here is only 1 % chance, that 
+following day will be extremely negative or positive (1 and 5 columns), 
+59 % chance, that it will be as today (N0) or it will be mild volatility
+ with positive or negative outcome (3 and 4 columns). Put it shortly – 
+if volatility today is very low, then most likely it will be tomorrow.</p><p>For
+ further research I would advise to increase the number of clusters and 
+check what are the results. On the same vein IntelligentTradingTech made
+ a <a 
+href="http://intelligenttradingtech.blogspot.com/2010/06/quantitative-candlestick-pattern.html"
+ ref="nofollow" target="_blank">post</a> while back.</p><p>The source 
+code can be found <a 
+href="https://github.com/kafka399/Rproject/blob/master/kmeans/kmeans.R" 
+ref="nofollow" target="_blank">here</a>.</p><p 
+class="syndicated-attribution"></p><div style="border: 1px solid; 
+background: none repeat scroll 0pt 0pt rgb(237, 237, 237); margin: 1px; 
+font-size: 13px;"><div style="text-align: center;"> This article was 
+kindly contributed to R-bloggers by <strong><a 
+href="http://www.investuotojas.eu/2011/07/06/artificial-intelligence-in-trading-k-means-clustering/">
+ Quantitative thoughts » EN</a></strong>.</div><hr> <a 
+href="http://www.r-bloggers.com/">R-bloggers.com</a> offers <strong><a 
+href="http://feedburner.google.com/fb/a/mailverify?uri=RBloggers">daily 
+e-mail updates</a></strong> about <a title="The R Project for 
+Statistical Computing" href="http://www.r-project.org/">R</a> news and <a
+ title="R tutorials" href="http://www.r-bloggers.com/?s=tutorial">tutorials</a>
+ on topics such as: visualization (<a title="ggplot2 tutorials" 
+href="http://www.r-bloggers.com/?s=ggplot2">ggplot2</a>, <a 
+title="lattice plots tutorials" 
+href="http://www.r-bloggers.com/?s=lattice">lattice</a>, <a title="Maps 
+and gis" href="http://www.r-bloggers.com/?s=map">maps</a>, <a 
+title="Animation in R" href="http://www.r-bloggers.com/?s=animation">animation</a>),
+ programming (<a title="RStudio IDE for R" 
+href="http://www.r-bloggers.com/?s=RStudio">RStudio</a>, <a 
+title="Sweave and literate programming" 
+href="http://www.r-bloggers.com/?s=sweave">Sweave</a>, <a title="LaTeX 
+in R" href="http://www.r-bloggers.com/?s=LaTeX">LaTeX</a>, <a title="SQL
+ and databases" href="http://www.r-bloggers.com/?s=SQL">SQL</a>, <a 
+title="Eclipse IDE for R" href="http://www.r-bloggers.com/?s=eclipse">Eclipse</a>,
+ <a title="git and github, Version Control System" 
+href="http://www.r-bloggers.com/?s=git">git</a>) statistics (<a 
+title="Regressions and ANOVA analysis tutorials" 
+href="http://www.r-bloggers.com/?s=regression">regression</a>, <a 
+title="principal component analysis tutorial" 
+href="http://www.r-bloggers.com/?s=PCA">PCA</a>, <a title="Time series" 
+href="http://www.r-bloggers.com/?s=time+series">time series</a>, <a 
+title="finance trading" href="http://www.r-bloggers.com/?s=trading">trading</a>)
+ and more...</div><div class="like"> <iframe 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/like_002.html"
+ allowtransparency="true" style="border: medium none; overflow: hidden; 
+width: 450px; height: 24px;" frameborder="0" scrolling="no"></iframe></div><hr><script type="text/javascript">/*<![CDATA[*/document.write('<iframe id="nr_clickthrough_frame" height="0" width="0" style="border-width: 0px; display:none;" onload="javascript:nRelate.loadFrame();"></iframe>');nRelate.domain="www.r-bloggers.com";/*]]>*/</script><iframe
+ id="nr_clickthrough_frame" style="border-width: 0px; display: none;" 
+onload="javascript:nRelate.loadFrame();" height="0" width="0"></iframe><div
+ class="nr_clear"></div><div id="nrelate_related_1" class="nrelate 
+nrelate_related nrelate_huf nr_80"><h3 class="nr_rc_title nr_title">Related
+ aRticles</h3><div class="nr_rc_inner nr_inner"><a style="height: 83px;"
+ class="nr_rc_panel nr_panel nr_rc_link nr_link nr_internal nr_row_1 
+nr_col_1 nr_odd_row nr_odd_col nr_first_col nr_first_row" 
+href="http://www.r-bloggers.com/k-means-clustering-on-big-data/"><span 
+class="nr_rc_img_div nr_img_div"><img class="nr_rc_img nr_img" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/86afb245d622167c9945f33b5f80efd2_80_80_6a010534b1db25970b015.txt"
+ style="height: 80px; width: 80px;"></span><span class="nr_rc_text 
+nr_text"><span class="nr_rc_post_title nr_post_title">K-Means Clustering
+ on Big Data</span><span class="nr_excerpt">In this post Joseph Rickert 
+demonstrates how to build a classification model on a large data set 
+with the RevoScaleR package. A script file ... </span></span><div 
+class="nr_clear" style="height: 1px;"></div></a><a style="height: 83px;"
+ class="nr_rc_panel nr_panel nr_rc_link nr_link nr_internal nr_row_2 
+nr_col_1 nr_even_row nr_odd_col nr_first_col" 
+href="http://www.r-bloggers.com/bot-botany-k-means-and-ggplot2/"><span 
+class="nr_rc_img_div nr_img_div"><img class="nr_rc_img nr_img" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/742300659134e5ac013a9b5f651dee79_80_80_iris_kmeans_misclassi.png"
+ style="height: 80px; width: 80px;"></span><span class="nr_rc_text 
+nr_text"><span class="nr_rc_post_title nr_post_title">Bot Botany – 
+K-Means and ggplot2</span><span class="nr_excerpt">So if you had a robot
+ that was an expert at botany - would you have a bot botanist? Among 
+other things, it would ... </span></span><div class="nr_clear" 
+style="height: 1px;"></div></a><a style="height: 99px;" 
+class="nr_rc_panel nr_panel nr_rc_link nr_link nr_internal nr_row_3 
+nr_col_1 nr_odd_row nr_odd_col nr_first_col" 
+href="http://www.r-bloggers.com/quantitative-candlestick-pattern-recognition-hmm-baum-welch-and-all-that/"><span
+ class="nr_rc_img_div nr_img_div"><img class="nr_rc_img nr_img" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/485fd06e24703196d3fccbf59800ca19_80_80_Qstate5rev1.jpg"
+ style="height: 80px; width: 80px;"></span><span class="nr_rc_text 
+nr_text"><span class="nr_rc_post_title nr_post_title">Quantitative 
+Candlestick Pattern Recognition (HMM, Baum Welch, and all that)</span><span
+ class="nr_excerpt">Fig 1. Clustering based approach to candlestick 
+Pattern Recognition. I've been reading a book titled, 'the Quants,' that
+ I'm sure will tantalize many traders ... </span></span><div 
+class="nr_clear" style="height: 1px;"></div></a><a style="height: 83px;"
+ class="nr_rc_panel nr_panel nr_rc_link nr_link nr_internal nr_row_4 
+nr_col_1 nr_even_row nr_odd_col nr_first_col nr_last_row" 
+href="http://www.r-bloggers.com/k-means-redistricting/"><span 
+class="nr_rc_img_div nr_img_div"><img class="nr_rc_img nr_img" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/f9f6945db537041c28b24318ed4a0f91_80_80_tx-cluster-redistrict.png"
+ style="height: 80px; width: 80px;"></span><span class="nr_rc_text 
+nr_text"><span class="nr_rc_post_title nr_post_title">K-Means 
+Redistricting</span><span class="nr_excerpt">U.S. Congressional 
+districts are today drawn with the aim of maximizing the electoral 
+advantage of the state’s majority party, subject to some constraints, 
+including ... </span></span><div class="nr_clear" style="height: 1px;"></div></a><div
+ style="clear: both;"></div></div></div> <!--[if IE 6]><script type="text/javascript">jQuery('.nrelate_huf').removeClass('nrelate_huf');</script><![endif]--><script type="text/javascript">/*<![CDATA[*/var entity_decoded_nr_url=jQuery('<div/>').html("http://api.nrelate.com/rcw_wp/0.47.8/?tag=nrelate_related&keywords=Artificial+intelligence+in+trading%3A+k-means+clustering&domain=www.r-bloggers.com&url=http%3A%2F%2Fwww.r-bloggers.com%2Fartificial-intelligence-in-trading-k-means-clustering%2F&nr_div_number=1").text();nRelate.getNrelatePosts(entity_decoded_nr_url);/*]]>*/</script><div
+ class="nr_clear"></div><hr><div style="border: 1px solid rgb(235, 147, 
+73); background: none repeat scroll 0pt 0pt rgb(253, 234, 218); 
+text-align: center; margin: 10px; font-size: 16px;"> If you got this 
+far, why not <strong><u>subscribe for updates</u> </strong>from the 
+site?  Choose your flavor: <a 
+href="http://feedburner.google.com/fb/a/mailverify?uri=RBloggers" 
+rel="nofollow">e-mail</a>, <a href="https://twitter.com/#%21/rbloggers" 
+rel="nofollow">twitter</a>, <a 
+href="http://feeds.feedburner.com/RBloggers" rel="nofollow">RSS</a>, or <a
+ href="http://www.facebook.com/pages/R-bloggers/191414254890" 
+rel="nofollow">facebook</a>...</div><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/en_GB.js"></script><script type="text/javascript">FB.init("f4a264d45dde87136dfe1d197cf48ae2");</script><fb:fan
+ profile_id="191414254890" stream="" connections="16" width="456" 
+height="270"></fb:fan><p class="tags"><small><strong>Tags:</strong> <a 
+href="http://www.r-bloggers.com/tag/en/" rel="tag">EN</a>, <a 
+href="http://www.r-bloggers.com/tag/quant/" rel="tag">quant</a>, <a 
+href="http://www.r-bloggers.com/tag/r-language/" rel="tag">R Language</a>,
+ <a href="http://www.r-bloggers.com/tag/stocks/" rel="tag">stocks</a></small></p></div></div><div
+ id="comments"><p class="nocomments">Comments are closed.</p></div></div><div
+ id="secondsidebar"><div class="side-widget" style="background: none 
+repeat scroll 0% 0% white; border: medium none white; margin: 90px 0pt 
+0pt;"></div><div class="side-widget"><div class="textwidget"><br><script type="text/javascript">google_ad_client="pub-2058725773761582";google_ad_slot="2767865888";google_ad_width=280;google_ad_height=250;</script><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/show_ads.js"></script><ins
+ style="display: inline-table; border: medium none; height: 250px; 
+margin: 0pt; padding: 0pt; position: relative; visibility: visible; 
+width: 280px;"><ins id="aswift_1_anchor" style="display: block; border: 
+medium none; height: 250px; margin: 0pt; padding: 0pt; position: 
+relative; visibility: visible; width: 280px;"><iframe 
+allowtransparency="true" hspace="0" marginwidth="0" marginheight="0" 
+onload="var 
+i=this.id,s=window.google_iframe_oncopy,H=s&amp;&amp;s.handlers,h=H&amp;&amp;H[i],w=this.contentWindow,d;try{d=w.document}catch(e){}if(h&amp;&amp;d&amp;&amp;(!d.body||!d.body.firstChild)){if(h.call){i+='.call';setTimeout(h,0)}else
+ 
+if(h.match){i+='.nav';w.location.replace(h)}s.log&amp;&amp;s.log.push(i)}"
+ vspace="0" id="aswift_1" name="aswift_1" style="left: 0pt; position: 
+absolute; top: 0pt;" frameborder="0" height="250" scrolling="no" 
+width="280"></iframe></ins></ins><br><hr><a 
+href="http://www.mathfinance.cn/category/rsplus/"> <img 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/R-quant.png"
+ alt="R Quant blog"> </a><br><hr> (Sponsors are welcomed to <a 
+href="http://www.r-statistics.com/contact-me/" 
+onclick="javascript:_gaq.push(['_trackEvent','outbound-widget','www.r-statistics.com/contact-me/']);">contact
+ me</a> regarding ad placement)</div></div><div class="side-widget"><h2>Top
+ visited articles</h2><ul class="wppp_list"><li><a 
+href="http://www.r-bloggers.com/100-prisoners-100-lines-of-code/" 
+title="100 Prisoners, 100 lines of code">100 Prisoners, 100 lines of 
+code</a></li><li><a 
+href="http://www.r-bloggers.com/getting-started-with-sweave-r-latex-eclipse-statet-texlipse/"
+ title="Getting Started with Sweave: R, LaTeX, Eclipse, StatET, &amp; 
+TeXlipse">Getting Started with Sweave: R, LaTeX, Eclipse, StatET, &amp; 
+TeXlipse</a></li><li><a 
+href="http://www.r-bloggers.com/cpu-and-gpu-trends-over-time/" 
+title="CPU and GPU trends over time">CPU and GPU trends over time</a></li><li><a
+ 
+href="http://www.r-bloggers.com/r-tutorial-series-r-beginners-guide-and-r-bloggers-updates/"
+ title="R Tutorial Series: R Beginner's Guide and R Bloggers Updates">R 
+Tutorial Series: R Beginner's Guide and R Bloggers Updates</a></li><li><a
+ 
+href="http://www.r-bloggers.com/google-ai-challenge-languages-used-by-the-best-programmers/"
+ title="Google AI Challenge: Languages Used by the Best Programmers">Google
+ AI Challenge: Languages Used by the Best Programmers</a></li><li><a 
+href="http://www.r-bloggers.com/select-operations-on-r-data-frames/" 
+title="Select operations on R data frames">Select operations on R data 
+frames</a></li><li><a 
+href="http://www.r-bloggers.com/amanda-cox-on-how-the-new-york-times-graphics-department-uses-r/"
+ title="Amanda Cox on How The New York Times Graphics Department Uses R">Amanda
+ Cox on How The New York Times Graphics Department Uses R</a></li><li><a
+ href="http://www.r-bloggers.com/delete-rows-from-r-data-frame/" 
+title="Delete rows from R data frame">Delete rows from R data frame</a></li><li><a
+ href="http://www.r-bloggers.com/why-use-r/" title="Why Use R?">Why Use 
+R?</a></li><li><a 
+href="http://www.r-bloggers.com/%e2%80%9csimply-start-over-and-build-something-better%e2%80%9d/"
+ title="“simply start over and build something better”">“simply start 
+over and build something better”</a></li><li><a 
+href="http://www.r-bloggers.com/top-10-algorithms-in-data-mining/" 
+title="Top 10 Algorithms in Data Mining">Top 10 Algorithms in Data 
+Mining</a></li><li><a 
+href="http://www.r-bloggers.com/opendata-r-google-easy-maps/" 
+title="OpenData + R + Google = Easy Maps">OpenData + R + Google = Easy 
+Maps</a></li><li><a 
+href="http://www.r-bloggers.com/character-occurrence-in-passwords/" 
+title="Character occurrence in passwords">Character occurrence in 
+passwords</a></li><li><a 
+href="http://www.r-bloggers.com/a-million-random-digits-review-of-reviews/"
+ title="A Million Random Digits: review of reviews">A Million Random 
+Digits: review of reviews</a></li></ul></div><div class="side-widget"><form
+ method="get" id="searchform" action="http://www.r-bloggers.com/"><div> <input
+ class="search_input" value="Search &amp; Hit Enter" name="s" id="s" 
+onfocus="if (this.value == 'Search &amp; Hit Enter') {this.value = '';}"
+ onblur="if (this.value == '') {this.value = 'Search &amp; Hit Enter';}"
+ type="text"> <input id="searchsubmit" type="hidden"></div></form></div></div></div><div
+ style="position: absolute; top: -10000px; width: 0px; height: 0px;" 
+id="FB_HiddenContainer"><div><iframe name="fb_api_server" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/client_restserver.html"
+ class="FB_SERVER_IFRAME" frameborder="0" scrolling="no"></iframe></div><div><iframe
+ name="loginStatus" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/login_status.html"
+ class="FB_SERVER_IFRAME" frameborder="0" scrolling="no"></iframe></div><div></div></div><div
+ style="display: none;"><iframe frameborder="0"></iframe></div><div 
+id="footer"> <strong><a href="http://www.r-bloggers.com/">R-bloggers</a></strong>
+ was founded by <a href="http://www.r-statistics.com/about/">Tal Galili</a>,
+ with gratitude to the <a href="http://www.r-project.org/">R</a> 
+community. <br> Is powered by <a href="http://www.wordpress.org/">WordPress</a>
+ using a <a href="http://themes.bavotasan.com/" rel="nofollow">bavotasan.com</a>
+ design.<br> Copyright © 2011 <strong>R-bloggers</strong>. All Rights 
+Reserved.<br></div><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/effects_002.js"></script><script src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/e-201127.js" type="text/javascript"></script><script src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/quant.js" type="text/javascript"></script><script type="text/javascript">st_go({blog:'11524731',v:'ext',post:'58074'});var load_cmc=function(){linktracker_init(11524731,58074,2);};if(typeof addLoadEvent!='undefined')addLoadEvent(load_cmc);else load_cmc();</script><img
+ id="wpstats" 
+src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/g.gif"
+ alt=""><script type="text/javascript" src="Artificial%20intelligence%20in%20trading_%20k-means%20clustering%20%7C%20%28R%20news%20&amp;%20tutorials%29_files/effects.js"></script><script type="text/javascript">jQuery(function(){jQuery("ul.sf-menu").supersubs({minWidth:12,maxWidth:27,extraWidth:1}).superfish({delay:100,speed:250});});</script><script type="text/javascript">var _gaq=_gaq||[];_gaq.push(['_setAccount','UA-419807-53']);_gaq.push(['_setCustomVar',1,'tags','en quant r-language stocks',3],['_trackPageview'],['_trackPageLoadTime']);(function(){var ga=document.createElement('script');ga.type='text/javascript';ga.async=true;ga.src=('https:'==document.location.protocol?'https://ssl':'http://www')+'.google-analytics.com/ga.js';var s=document.getElementsByTagName('script')[0];s.parentNode.insertBefore(ga,s);})();</script><!-- Performance optimized by W3 Total Cache. Learn more: http://www.w3-edge.com/wordpress-plugins/
+
+Minified using disk
+Page Caching using disk (enhanced)
+Database Caching 12/12 queries in 0.005 seconds using disk
+Object Caching 1238/1243 objects using disk
+
+Served from: www.r-bloggers.com @ 2011-07-06 13:56:20 --></body></html>

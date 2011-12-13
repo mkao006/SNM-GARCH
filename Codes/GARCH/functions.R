@@ -1,0 +1,426 @@
+######################################################################
+## Reproduceable example
+######################################################################
+
+#library(compiler)
+#library(tseries)
+library(fGarch)
+source("~/dropbox/Uni Work/Masters Thesis/Codes/Constraint Newton Method/cnm.R")
+source("~/dropbox/Uni Work/Masters Thesis/Codes/Constraint Newton Method/dden.R")
+#load("~/Dropbox/Uni Work/Masters Thesis/Codes/State Space Model/tsa3.rda")
+
+#source("~/work/spmle/R/old/cnm.R")
+#source("~/work/spmle/R/old/dden.R")
+
+## Rewrite the log-density and the key function as revised on 26th
+## Sept 2011.
+logd.mgarch <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 7)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2 ## Let it be beta[4] for now
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+
+    sigma.t <- sqrt(sigma.t)
+#    dl$sigma.t <- sigma.t
+    if(which[1] == 1){
+#        dl$ld <- -0.5 * (log(2 * pi) +
+#                         sweep(sweep(outer(xt^2/sigma.t^2, 1/pt^2, "*"),
+#                                     2, log(pt^2), "+"), 1,
+#                               log(sigma.t^2), "+"))
+
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          (xt^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        #dldsigma <- outer(xt^2/sigma.t^3, 1/pt^2, "*") - 1/sigma.t
+        dldsigma <- matrix(xt^2/sigma.t^3 /rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+#        dl$dldsigma <- dldsigma
+        sig.vec <- 2 * sigma.t
+        cp.alpha <- cumsum(c(0, beta[2]^(0:(T-2))))
+        cp.beta <- double(T)
+        cp.beta[1:2] <- 0
+        for(i in 3:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[1:(i - 2)]^2))
+        }
+
+        dsigmadalpha0 <- cp.alpha #1
+
+        dsigmadalpha1 <-
+            (beta[1] *
+#             c(0, 0, cumsum(c(1, cumprod(rep(beta[2], T - 3))) * 1:(T - 2)))) +
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+#             c(0, 0, 1:(T - 2) * c(1, cumprod(rep(beta[2], T - 3))) * beta[4]) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        cp.beta2 <- double(T)
+        cp.beta2[1] <- 0
+        for(i in 2:T){
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[1:(i - 1)]^2))
+        }
+        dsigmadbeta1 <- cp.beta2 #3
+        # dsigmadsigma <- c(0, cumprod(rep(beta[2], T - 1))) * 2 * beta[4] #4
+        # dsigmadsigma <- c(1, cumprod(rep(beta[2], T - 1))) *
+        #     2 * sqrt(beta[4]) #4
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1))
+
+
+        dbvec <- array(c(rep(dsigmadalpha0, lpt),
+                       rep(dsigmadalpha1, lpt),
+                       rep(dsigmadbeta1, lpt),
+                       rep(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb))
+
+        #dl$db1 <- sweep(array(dldsigma/sig.vec, dim = c(T, lpt, lb)),
+        #                c(1, 3),
+        #                c(dsigmadalpha0,
+        #                dsigmadalpha1,
+        #                dsigmadbeta1,
+        #                dsigmadsigma), "*")
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb))
+        #dl$dldsigma <- dldsigma
+        dl$db1 <- dldsigma * dbvec
+#        dl$dbvec <- dbvec
+#        dl$sig.vec <- sig.vec
+    }
+
+    if(which[3] == 1){
+      #dl$dt1 <- outer(xt^2/sigma.t^2, 1/(pt^3), "*") - 1/pt
+      dt1 = xt^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+        # T * m matrix
+    }
+    if(which[4] == 1){
+        #dl$dt2 <- outer((-3 * xt^2)/sigma.t^2, 1/(pt^4), "*") + 1/(pt^2)
+        dt2 <- (-3 * xt^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+# Byte compile the function
+logd.mgarch <- cmpfun(logd.mgarch)
+
+
+valid.mgarch <- function(x, beta, mix){
+    beta[1] > 0 &&
+    beta[2] >= 0 &&
+    beta[3] >= 0 &&
+    beta[4] >= 0 &&
+    mix$pt > 0
+#    (beta[2] + beta[3] < 1)
+}
+
+valid.snpmle <- function(x, beta, mix)
+  valid(x, beta, mix) && all(mix$pr >= 0) && all(mix$pt >= 0)
+
+
+initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
+    if(is.null(beta)){
+        cgf <- coef(garchFit(data = as.numeric(x), trace = FALSE))
+        beta <- c(cgf[2], cgf[4], cgf[3], sd(x))
+        mix <- dden(1, 1)
+        list(beta = beta, mix = mix)
+    }
+}
+
+
+######################################################################
+## modify some of the original function
+######################################################################
+
+maxgrad <- function(x, beta, dmix, ma, grid=100, tol=-Inf, maxit=100) {
+  if(length(grid) == 1){
+        ##rth <- range.mgarch(x, beta)
+    grid <- seq(0.1, 10, length = grid)
+  }
+  np = length(grid)
+  # print(grid)
+  dg = grad(x, grid, beta, dmix, ma, order=1)$d1
+
+  # d0 = grad(x, grid, beta, dmix, ma, order=0)$d0
+  # print(rbind(grid,d0, dg))
+  # stop()
+
+  jmax = (1:(np-1))[dg[1:(np-1)] > 0 & dg[2:np] < 0]
+  if( length(jmax) < 1 ) return
+  pt = (grid[jmax] + grid[jmax+1]) * .5
+  left = grid[jmax]
+  right = grid[jmax+1]
+  if(length(pt) != 0) {
+    pt.old = left
+    d1.old = grad(x, left, beta, dmix, ma, order=1)$d1
+    d2 = rep(-1, length(pt))  # or d2 = rep(1, length(pt))
+    for( i in 1:maxit ) {
+      d1 = grad(x, pt, beta, dmix, ma, order=1)$d1
+      d2t = (d1 - d1.old) / (pt - pt.old)
+      jd = !is.na(d2t) & d2t < 0
+      d2[jd] = d2t[jd]
+      left[d1>0] = pt[d1>0]
+      right[d1<0] = pt[d1<0]
+      pt.old = pt
+      d1.old = d1
+      pt = pt - d1 / d2
+      j = is.na(pt) | pt < left | pt > right
+      pt[j] = (left[j] + right[j]) * .5
+      # print(pt)
+      if( max(abs(pt - pt.old)) <= 1e-14 * diff(range(grid))) break
+    }
+  }
+  else i = 0
+  # print(i)
+  if(dg[np] >= 0) pt = c(grid[np], pt)
+  if(dg[1] <= 0) pt = c(grid[1], pt)
+  if(length(pt) == 0) stop("no new support point found") # should not happen
+  g = grad(x, pt, beta, dmix, ma, order=0)$d0
+  names(pt) = names(g) = NULL
+  j = g >= tol
+  list(pt=pt[j], grad=g[j], num.iterations=i)
+}
+
+
+plotgrad <- function(x, beta, mix, ma, len=500,
+      xlab=expression(theta), ylab,
+      cex=1, pch=1, order=0, lower, upper, ...) {
+  if(missing(ylab)) {
+    ylab = switch(order+1,
+    expression(d(theta * "; " * G, beta)),
+    expression(d[1](theta * "; " * G, beta)),
+    expression(d[2](theta * "; " * G, beta))  )
+  }
+  if( missing(lower) || missing(upper) ) {
+    rth = c(0, 20)
+    if( missing(lower) ) lower = rth[1] # - .05 * diff(rth)
+    if( missing(upper) ) upper = rth[2] # + .05 * diff(rth)
+  }
+  pt = seq(lower, upper, len=len)
+  g = switch(order+1,
+    grad(x, pt, beta, mix, ma, order=order)$d0,
+    grad(x, pt, beta, mix, ma, order=order)$d1,
+    grad(x, pt, beta, mix, ma, order=order)$d2)
+  plot(pt, g, type="l", col="blue", xlab=xlab, ylab=ylab,
+       cex = cex, cex.axis = cex, cex.lab = cex, ... )
+  if(is.dden(mix)) {
+    j = mix$pr != 0
+    points(mix$pt[j], rep(0,length(mix$pt[j])), pch=pch, col="red")
+    abline(v=mix$pt[j], lty=3, col="red")
+  }
+  lines(c(lower, upper), c(0,0), col="black")
+}
+
+
+cnmms <- function(x=rcvp2(), init=NULL, maxit=1000,
+                  model=c("spmle","npmle"),
+                  tol=1e-10, grid=100, kmax=Inf,
+                  plot=c("null", "gradient", "prob","dden"),
+                  plotorder=0, verb=0, llt=NULL) {
+    plot = match.arg(plot)
+    model = match.arg(model)
+    k = length(x)
+    if(kmax == Inf) init = initial.snpmle(x, init)
+    else init = initial.snpmle(x, init, kmax=kmax)
+    beta = init$beta
+    nb = length(beta)
+    mix = init$mix
+    ll1 = -Inf
+    convergence = 1
+    for(i in 1:maxit) {
+        #cat(paste("\n", "Iteration:", i, "\n", sep = " "))
+        l = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        ma = apply(l, 1, max)
+        dmix = drop(exp(l - ma) %*% mix$pr) + 1e-100
+        switch(plot,
+               "gradient" = plotgrad(x, beta, mix, ma,
+                pch=19, order=plotorder),
+               "prob" = plot(x, mix, beta),
+               "dden" = plot(mix) )
+        #if(plot == "gradient") points(x$mi, rep(0,length(x$mi)),
+         #  pch="|", cex=.5)
+        if(length(mix$pt) < kmax) {
+            gridpoints = seq(0.1, 20, length = grid)
+            g = maxgrad(x, beta, dmix, ma, grid=gridpoints, tol=-Inf)
+            # g = maxgrad2(x, beta, dmix, ma, mix$pt, tol=-Inf)
+            if(plot=="gradient") points(g$pt, g$grad, pch=20, col="blue")
+            gradient = max(g$grad)
+            kpt = min(kmax - length(mix$pt), length(g$pt))
+            jpt = order(g$grad, decreasing=TRUE)
+            mix = dden(c(mix$pt,g$pt[jpt][1:kpt]), c(mix$pr,rep(0,kpt)))
+        }
+        lpt = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        dpt = pmin(exp(lpt - ma), 1e100)
+        a = cbind(dpt/dmix - drop(rep(2,k)))
+        r = nnls(rbind(a, rep(1,length(mix$pt))), c(rep(0,nrow(a)),1))
+        sol = r$x / sum(r$x)
+        r = lsch(mix, beta, dden(mix$pt,sol), beta, x, which=c(1,0,0))
+        mix = collapse.snpmle(r$mix, beta, x)
+        r = switch(model,
+        spmle = bfgs(mix, beta, x, which=c(1,1,1)),
+        npmle = bfgs(mix, beta, x, which=c(1,1,0)))
+
+        ## Scale the error distribution and the beta
+        sc <- sqrt(sum(r$mix$pr * r$mix$pt^2))
+        #print("Before Scale:")
+        #print.snpmle(verb, x, r$mix, r$beta, gradient)
+        #print(paste("Convergence Code: ", r$conv, sep = ""))
+        #print(r$beta)
+        #print(r$mix)
+        #print(r$num.iter)
+        if(abs(sc - 1) > tol){
+            new.sc <- ifelse(valid(x, c(r$beta[1] * sc,
+                                        r$beta[2],
+                                        r$beta[3] * sc,
+                                        r$beta[4] * sc), r$mix),
+                             sc, (1/(r$beta[2] + r$beta[3]) - 1e-7))
+            #print(new.sc)
+            #print(r$mix)
+            r$mix$pt <- r$mix$pt/new.sc
+            #print(r$mix)
+            r$beta[c(1, 3)] <- r$beta[c(1, 3)] * new.sc^2
+            r$beta[4] <- r$beta[4] * new.sc
+            r$conv <- 4
+            #next
+        }
+        #print("After Scale:")
+        #print.snpmle(verb, x, r$mix, r$beta, gradient)
+        #print(sc)
+        #print(sqrt(sum(r$mix$pr * r$mix$pt^2)))
+        #print(r$mix)
+#        if(r$conv == 3) {convergence = r$conv; break}
+        beta = r$beta
+        mix = r$mix
+        #print(r$ll)
+        #print(ll1)
+        if(is.null(llt))
+        {if(r$ll >= ll1 && r$ll <= ll1 + tol) {convergence = 0; break}}
+        else {
+            if(r$ll >= llt) {convergence = 0; break}
+            else if(r$ll >= ll1 && r$ll <= ll1 + 1e-16) {convergence = 1; break}
+        }
+        ll1 = r$ll
+        print.snpmle(verb, x, mix, beta, gradient)
+    }
+    list(mix=mix, beta=beta, num.iterations=i,
+         ll=r$ll, grad=r$grad,
+                                        # max.gradient=gradient,
+         convergence=convergence)
+}
+
+
+bfgs <- function(mix, beta, x, tol=1e-16, maxit=100, which=c(1,1,1), D=NULL) {
+  k1 = if(which[1]) length(mix$pr) - 1 else 0
+  k2 = if(which[2]) length(mix$pt) else 0
+  k3 = if(which[3]) length(beta) else 0
+  if( k1 == 0 ) which[1] = 0
+  if( sum(which) == 0 ) stop("No parameter specified to be updated in bfgs()")
+  dl = dll.snpmle(x, mix, beta, which=c(1,which), ind=TRUE)
+  ll = sum(dl$ll)
+  grad = c(if(which[1])
+    colSums(dl$dp[,1:k1,drop=FALSE] - dl$dp[,k1+1]) else NULL,
+    if(which[2]) colSums(dl$dt) else NULL,
+    if(which[3]) colSums(dl$db) else NULL)
+  r = list(mix=mix, beta=beta, ll=ll, grad=grad, convergence=1)
+  prmt = c(if(which[1]) r$mix$pr[-(k1+1)] else NULL,
+    if(which[2]) r$mix$pt else NULL,
+    if(which[3]) r$beta else NULL)
+  dlprmt = cbind(dl$dp[,1:k1,drop=FALSE] - dl$dp[k1+1], dl$dt, dl$db)
+  if(is.null(D)) D = diag(-1, nrow=k1+k2+k3)
+  else if(nrow(D) != k1+k2+k3) stop("Provided D has incompatible dimensions")
+  for(i in 1:maxit) {
+    old.r = r
+    old.prmt = prmt
+    prmt2 = drop( prmt - D %*% r$grad )
+    d1 = prmt2 - prmt
+    alpha = 1
+    if(which[1]) {
+      pr = prmt2[1:k1]
+      pr2 = c(pr, 1-sum(pr))
+      if(any(pr2 < 0)) {
+        step = pr2 - r$mix$pr
+        ratio = pmax(-pr2, 0) / abs(step)
+        jmax = which.max(ratio)
+        alpha = 1 - ratio[jmax]
+        pr2 = r$mix$pr + alpha * step
+        pr2[jmax] = 0
+      }
+    }
+    else pr2 = r$mix$pr
+    prmt2 = prmt + alpha * d1
+    if(which[2]) pt2 = prmt2[(k1+1):(k1+k2)] else pt2 = r$mix$pt
+    if(which[3]) beta2 = prmt2[(k1+k2+1):(k1+k2+k3)] else beta2 = r$beta
+    mix2 = dden(pt2, pr2)
+    r = lsch(r$mix, r$beta, mix2, beta2, x, which=which, brkt=TRUE)
+    if( any(r$mix$pr == 0) ) {
+      j = r$mix$pr == 0
+      r$mix = dden(r$mix$pt[!j], r$mix$pr[!j])
+      return( bfgs(r$mix, r$beta, x, tol, maxit, which) )
+    }
+    if( r$conv != 0 ) break
+    if( r$ll >= old.r$ll && r$ll <= old.r$ll + tol ) {convergence = 0; break}
+    g = r$grad - old.r$grad
+    prmt = c(if(which[1]) r$mix$pr[-(k1+1)] else NULL,
+      if(which[2]) r$mix$pt else NULL,
+      if(which[3]) r$beta else NULL)
+    d = prmt - old.prmt
+    dg = sum(d * g)
+    if( dg < 0 ) D = D +
+      (1 + drop(t(g) %*% D %*% g) / dg) * outer(d, d) / dg -
+        (outer(d, g) %*% D + D %*% outer(g, d)) / dg
+  }
+#  print(sc <- sqrt(sum(r$mix$pr * r$mix$pt^2)))
+#  if(abs(sc - 1) > tol){
+#      new.sc <- ifelse(valid(x, c(r$beta[1] * sc,
+#                                  r$beta[2],
+#                                  r$beta[3] * sc,
+#                                  r$beta[4] * sc), r$mix),
+#                       sc, (1/(r$beta[2] + r$beta[3]) - 1e-7))
+#      print(new.sc)
+#      r$mix$pt <- r$mix$pt/sqrt(new.sc)
+#      r$beta[c(1, 3, 4)] <- r$beta[c(1, 3, 4)] * new.sc
+#      r$conv <- 4
+#  }
+  r$num.iterations = i
+  r
+}
+
+
+
+######################################################################
+## check
+######################################################################
+
+## Check the derivatives
+check <- as.numeric(dem2gbp[1:5, ])
+class(check) <- "mgarch"
+test.diff <- function(x = check,
+                      beta = c(.3, .4, .5, .7), incremt = 1e-10,
+                      pt = 1:2) {
+    index0 = rep(0,4)
+    for(i in 1:4) {
+        index = index0
+        index[i] = 1
+        d1 = (logd.mgarch(x, pt = pt, beta = beta + index * incremt,
+                          which=c(1, 0, 0, 0))$ld -
+              logd.mgarch(x, pt = pt, beta = beta,
+                          which = c(1, 0, 0, 0))$ld)/incremt
+    d2 = logd.mgarch(x, pt = pt, beta = beta, which = c(0, 1, 0, 0))$db1[,,i]
+    print(max(abs(d1 - d2)))
+    }
+}
+
+test.diff()

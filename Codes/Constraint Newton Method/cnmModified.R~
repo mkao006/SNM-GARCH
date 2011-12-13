@@ -1,0 +1,905 @@
+# =============================================================== #
+# Maximum likelihood computation for semiparametric mixture model #
+# =============================================================== #
+
+library(lsei)
+
+initial <- function(x, beta, mix, kmax) UseMethod("initial")
+valid <- function(x, beta, mix) UseMethod("valid")
+logd <- function(x, beta, pt, which) UseMethod("logd")
+rdup <- function(x, d, beta, nd) UseMethod("rdup")
+
+snpmle <- function(x=rcvp2(), model=c("npmle","spmle"),
+                   method=c("cnm","cnmms","cnmpl","cnmap"), ...) {
+    model = match.arg(model)
+    method = match.arg(method)
+    if(model == "npmle") {
+        if(method %in% c("cnm","cnmms")) get(method)(x, ...)
+        else stop("wrong method specified for computing an NPMLE")
+    }
+    else {
+        if(method != "cnm") get(method)(x, ...)
+        else stop("wrong method specified for computing an NPMLE")
+    }
+}
+
+# Computes the mixing proportions only or the NPMLE
+# model   = prop,   computes the mixing proportions
+#         = npmle,   computes the NPMLE
+
+cnm <- function(x=rcvp2(), init=NULL, model=c("npmle","prop"),
+                maxit=1000, tol=1e-6, grid=100,
+                plot=c("null", "gradient", "dden"), plotorder=0, verb=0) {
+    plot = match.arg(plot)
+    model = match.arg(model)
+    k = length(x)
+    init = initial.snpmle(x, init)
+    beta = init$beta
+    nb = length(beta)
+    mix = init$mix
+    ll = init$ll
+    ll1 = -Inf
+    convergence = 1
+    for(i in 1:maxit) {
+        ## Calculate the log density of each point (y_i) at each
+        ## discrete component density (G(theta_i))
+        l = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        ## Calculate the maximum of the log density of each
+        ## observation. (Why?)
+        ma = apply(l, 1, max)
+        ## The marginal distribution of y_i
+        dmix = drop(exp(l - ma) %*% mix$pr) + 1e-100
+        switch(plot,
+               "gradient" = plotgrad(x, beta, mix, ma, pch=19, order=plotorder),
+               "dden" = plot(mix) )
+        if(plot == "gradient") points(x$mi, rep(0,length(x$mi)),
+           pch="|", cex=.5)
+        rth = range(x, beta)
+        if( ll >= ll1 && ll <= ll1 + tol ) {convergence = 0; break}
+        ll1 = ll
+        mix1 = mix
+        if(model == "npmle") {
+#      gridpoints =
+#        seq(rth[1]-.01*diff(rth), rth[2]+.01*diff(rth), length=grid)
+            gridpoints = seq(rth[1], rth[2], length=grid)
+      # gridpoints = sort(c(rth, x$mi))
+            ## Calculate the maximum of the gradient function
+            g = maxgrad(x, beta, dmix, ma, grid=gridpoints, tol=-Inf)
+      # g = maxgrad2(x, beta, dmix, ma, mix$pt, tol=-Inf)
+            gradient = max(g$grad)
+            if( verb == 5 ) cat("max gradient = ", max(g$grad), "\n")
+      # print(g$pt)
+            ## Add the new maximum into the mixing distribution
+            mix = dden(c(mix$pt,g$pt), c(mix$pr,rep(0,length(g$pt))))
+        }
+    # if(plot=="gradient") points(g$pt, g$grad, pch=1, col="blue")
+        ## The log density at the new mix, mix$pt has a rnew support
+        ## point introduced from the maximum of the gradient point
+        lpt = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        ## capped the value at 1e100
+        dpt = pmin(exp(lpt - ma), 1e100)
+        ## Why minus 2 here?
+        a = dpt/dmix - 2
+        if(model != "npmle") gradient = colSums(dpt/dmix) - k
+        ## Solve for the new proportion (pi)
+        r = nnls(rbind(a, rep(1,length(mix$pt))), c(rep(0,nrow(a)),1))
+        ## Scale the proportion so that it sum up to one
+        sol = r$x / sum(r$x)
+        r = lsch(mix, beta, dden(mix$pt,sol), beta, x, which=c(1,0,0))
+        mix = collapse.snpmle(r$mix, beta, x)
+        ll = attr(mix, "ll")
+        print.snpmle(verb, x, mix, beta, gradient)
+    }
+    list(mix=mix, beta=beta, num.iterations=i, ll=ll[1],
+         gradient=gradient, convergence=convergence)
+}
+
+# Updates mix using CNM and then (pi, theta, beta) using BFGS.
+
+# Modifying the support set
+
+cnmms <- function(x=rcvp2(), init=NULL, maxit=1000,
+                  model=c("spmle","npmle"),
+                  tol=1e-10, grid=100, kmax=Inf,
+                  plot=c("null", "gradient", "prob","dden"),
+                  plotorder=0, verb=0, llt=NULL) {
+    plot = match.arg(plot)
+    model = match.arg(model)
+    k = length(x)
+    if(kmax == Inf) init = initial.snpmle(x, init)
+    else init = initial.snpmle(x, init, kmax=kmax)
+    beta = init$beta
+    nb = length(beta)
+    mix = init$mix
+    ll1 = -Inf
+    convergence = 1
+    for(i in 1:maxit) {
+        l = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        ma = apply(l, 1, max)
+        dmix = drop(exp(l - ma) %*% mix$pr) + 1e-100
+        switch(plot,
+               "gradient" = plotgrad(x, beta, mix, ma,
+                pch=19, order=plotorder),
+               "prob" = plot(x, mix, beta),
+               "dden" = plot(mix) )
+        if(plot == "gradient") points(x$mi, rep(0,length(x$mi)),
+           pch="|", cex=.5)
+    if(length(mix$pt) < kmax) {
+      rth = range(x, beta)
+      gridpoints = seq(rth[1], rth[2], length=grid)
+      g = maxgrad(x, beta, dmix, ma, grid=gridpoints, tol=-Inf)
+      # g = maxgrad2(x, beta, dmix, ma, mix$pt, tol=-Inf)
+      # if(plot=="gradient") points(g$pt, g$grad, pch=20, col="blue")
+      gradient = max(g$grad)
+      kpt = min(kmax - length(mix$pt), length(g$pt))
+      jpt = order(g$grad, decreasing=TRUE)
+      mix = dden(c(mix$pt,g$pt[jpt][1:kpt]), c(mix$pr,rep(0,kpt)))
+  }
+        lpt = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+        dpt = pmin(exp(lpt - ma), 1e100)
+        a = cbind(dpt/dmix - drop(rep(2,k)))
+        r = nnls(rbind(a, rep(1,length(mix$pt))), c(rep(0,nrow(a)),1))
+        sol = r$x / sum(r$x)
+        r = lsch(mix, beta, dden(mix$pt,sol), beta, x, which=c(1,0,0))
+        mix = collapse.snpmle(r$mix, beta, x)
+        r = switch(model,
+        spmle = bfgs(mix, beta, x, which=c(1,1,1)),
+        npmle = bfgs(mix, beta, x, which=c(1,1,0))  )
+        if(r$conv == 3) {convergence = r$conv; break}
+    # print(r$num.iter)
+        beta = r$beta
+        mix = r$mix
+        if(is.null(llt))
+        {if(r$ll >= ll1 && r$ll <= ll1 + tol) {convergence = 0; break}}
+        else {
+            if(r$ll >= llt) {convergence = 0; break}
+            else if(r$ll >= ll1 && r$ll <= ll1 + 1e-16) {convergence = 1; break}
+        }
+        ll1 = r$ll
+        print.snpmle(verb, x, mix, beta, gradient)
+    }
+    list(mix=mix, beta=beta, num.iterations=i,
+         ll=r$ll, grad=r$grad,
+                                        # max.gradient=gradient,
+         convergence=convergence)
+}
+
+# Use the BFGS method to maximize the profile function
+
+cnmpl <- function(x=rcvp2(), init=NULL, tol=1e-6, tol.npmle=tol*1e-4, grid=100,
+             maxit=100, verb=0, plot=c("null", "gradient", "dden"),
+             method=c("bfgs","cgn"), ...) {
+  plot = match.arg(plot)
+  method = match.arg(method)
+  init = initial.snpmle(x, init)
+  beta = init$beta
+  mix = init$mix
+  nb = length(beta)
+  r = pll(beta, mix, x, tol.npmle=tol.npmle, grid=grid)
+  if(method == "bfgs") {
+    D = - diag(1/colSums(r$db*r$db), nrow=nb)
+  }
+  convergence = 1
+  num.npmle = 1
+  for(i in 1:maxit) {
+    old.r = r
+    rth = range(x, beta)
+    if(method == "bfgs") beta2 = drop(r$beta - D %*% r$grad)
+    else beta2 = drop(solve(r$db, r$db %*% r$beta + 1, LIN=TRUE))
+    r = lsch.pll(old.r, beta2, x, tol=tol, tol.npmle=tol.npmle,
+      grid=grid, plot=plot, brkt=TRUE)
+    num.npmle = num.npmle + r$num.npmle
+    # if( r$conv != 0 ) {convergence = 2; break}
+    if( r$ll >= old.r$ll && r$ll <= old.r$ll + tol ) {convergence = 0; break}
+    if( method == "bfgs" ) {
+      gamma = r$grad - old.r$grad
+      delta = r$beta - old.r$beta
+      dg = sum(delta * gamma)
+      if( dg < 0 ) D = D +
+        (1 + drop(t(gamma) %*% D %*% gamma) / dg) * outer(delta, delta) / dg -
+          (outer(delta, gamma) %*% D + D %*% outer(gamma, delta)) / dg
+    }
+    print.snpmle(verb, x, r$mix, r$beta, r$max.grad)
+  }
+  list(mix=r$mix, beta=r$beta, ll=r$ll, grad=r$grad,
+       max.gradient=r$max.gradient, num.iterations=i, num.cnm.calls=num.npmle,
+       convergenence=convergence)
+}
+
+# Updates mix using one iteration of CNM and then updates beta usin BFGS.
+# It is almost the standard cyclic method, except only one iteration of CNM
+# is used.
+
+cnmap <- function(x=rcvp2(), init=NULL, maxit=1000, tol=1e-6, grid=100,
+      plot=c("null", "gradient", "dden"), verb=0, llt=NULL) {
+  plot = match.arg(plot)
+  k = length(x)
+  init = initial.snpmle(x, init)
+  beta = init$beta
+  nb = length(beta)
+  mix = init$mix
+  ll = init$ll
+  ll1 = -Inf
+  convergence = 1
+  for(i in 0:maxit) {
+    l = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+    ma = apply(l, 1, max)
+    dmix = drop(exp(l - ma) %*% mix$pr) + 1e-100
+    switch(plot,
+           "gradient" = plotgrad(x, beta, mix, ma),
+           "dden" = plot(mix) )
+    rth = range(x, beta)
+    gridpoints = seq(rth[1], rth[2], length=grid)
+    g = maxgrad(x, beta, dmix, ma, grid=gridpoints, tol=-Inf)
+    if(plot=="gradient") points(g$pt, g$grad, pch=20, col="red")
+    gradient = max(g$grad)
+
+    # updates NPMLE, using one step of CNM
+    mix = dden(c(mix$pt,g$pt), c(mix$pr,rep(0,length(g$pt))))
+    lpt = logd(x, beta, mix$pt, which=c(1,0,0,0))$ld
+    dpt = pmin(exp(lpt - ma), 1e100)
+    a = cbind(dpt/dmix - drop(rep(2,k)))
+    r = nnls(rbind(a, rep(1,length(mix$pt))), c(rep(0,nrow(a)),1))
+    sol = r$x / sum(r$x)
+    r = lsch(mix, beta, dden(mix$pt,sol), beta, x, which=c(1,0,0))
+    mix = collapse.snpmle(r$mix, beta, x)
+    ll = attr(mix, "ll")
+    if(is.null(llt)) { if( ll <= ll1 + tol ) {convergence = 0; break} }
+    else { if( ll >= llt ) {convergence = 0; break} }
+    ll1 = ll
+    mix1 = mix
+    r = bfgs(mix, beta, x, which=c(0,0,1))
+    beta = r$beta
+    print.snpmle(verb, x, mix, beta, gradient)
+  }
+  # mix = unique(mix, prec=c(0.001*diff(rth),0))
+  mix = unique(mix, prec=0)
+  list(mix=mix, beta=beta, num.iterations=i,
+       ll=logLik.snpmle(x, beta, mix), grad=r$grad,
+       max.gradient=gradient, convergence=convergence)
+}
+
+logLik.snpmle <- function(x, beta, mix) {
+  ld = sweep(logd(x, beta, mix$pt, which=c(1,0,0,0))$ld, 2, log(mix$pr), "+")
+  ma = apply(ld, 1, max)
+  pid = exp(ld - ma)
+  pis = rowSums(pid)
+  ll = sum( log(pis) + ma )
+  attr(ll, "p") = pid / pis
+  attr(ll, "ma") = ma
+  ll
+}
+
+# Profile log-likelihood
+
+pll <- function(beta, mix0, x, tol.npmle=1e-14, grid=100, ...) {
+  r = cnm(x=x, init=list(beta=beta, mix=mix0),
+    tol=tol.npmle, grid=grid, maxit=50, ...)
+  mix = r$mix
+  dl = logd(x, beta, mix$pt, which=c(1,1,0,0))
+  lpt = dl$ld
+  ma = apply(lpt, 1, max)
+  dmix = drop(exp(lpt - ma) %*% mix$pr) + 1e-100
+  dpt = pmin(exp(lpt - ma), 1e100)
+  p = sweep(dpt/dmix, 2, mix$pr, "*")
+  db = apply(sweep(dl$db1, c(1,2), p, "*"), c(1,3), sum)
+  g = colSums(db)
+  list(ll=r$ll, beta=r$beta, mix=mix, grad=g, max.gradient=r$max.gradient,
+       db=db, num.iterations=r$num.iter)
+}
+
+# Computes all local maxima of the gradient function using a hybrid
+# secant-bisection method, which does not need the second derivative of the
+# gradient function.
+
+maxgrad <- function(x, beta, dmix, ma, grid=100, tol=-Inf, maxit=100) {
+  if( length(grid) == 1 ) {
+    rth = range(x, beta)
+    grid = seq(rth[1], rth[2], length=grid)
+  }
+  np = length(grid)
+  dg = grad(x, grid, beta, dmix, ma, order=1)$d1
+  jmax = (1:(np-1))[dg[1:(np-1)] > 0 & dg[2:np] < 0]
+  if( length(jmax) < 1 ) return
+  pt = (grid[jmax] + grid[jmax+1]) * .5
+  left = grid[jmax]
+  right = grid[jmax+1]
+  if(length(pt) != 0) {
+    pt.old = left
+    d1.old = grad(x, left, beta, dmix, ma, order=1)$d1
+    d2 = rep(-1, length(pt))  # or d2 = rep(1, length(pt))
+    for( i in 1:maxit ) {
+      d1 = grad(x, pt, beta, dmix, ma, order=1)$d1
+      d2t = (d1 - d1.old) / (pt - pt.old)
+      jd = !is.na(d2t) & d2t < 0
+      d2[jd] = d2t[jd]
+      left[d1>0] = pt[d1>0]
+      right[d1<0] = pt[d1<0]
+      pt.old = pt
+      d1.old = d1
+      pt = pt - d1 / d2
+      j = is.na(pt) | pt < left | pt > right
+      pt[j] = (left[j] + right[j]) * .5
+      # print(pt)
+      if( max(abs(pt - pt.old)) <= 1e-14 * diff(range(grid))) break
+    }
+  }
+  else i = 0
+  # print(i)
+  if(dg[np] >= 0) pt = c(grid[np], pt)
+  if(dg[1] <= 0) pt = c(grid[1], pt)
+  if(length(pt) == 0) stop("no new support point found") # should not happen
+  g = grad(x, pt, beta, dmix, ma, order=0)$d0
+  names(pt) = names(g) = NULL
+  j = g >= tol
+  list(pt=pt[j], grad=g[j], num.iterations=i)
+}
+
+# Computes all local maxima of the gradient function
+
+maxgrad1 <- function(x, beta, dmix, ma, grid=100, tol=-Inf, maxit=100) {
+  if( length(grid) == 1 ) {
+    rth = range(x, beta)
+    grid = seq(rth[1], rth[2], length=grid)
+    # grid = sort(c(rth, x))
+  }
+  np = length(grid)
+  dg = grad(x, grid, beta, dmix, ma, order=1)$d1
+  jmax = (1:(np-1))[dg[1:(np-1)] > 0 & dg[2:np] < 0]
+  if( length(jmax) < 1 ) return
+  pt = (grid[jmax] + grid[jmax+1]) * .5
+  left = grid[jmax]
+  right = grid[jmax+1]
+  if(length(pt) != 0) {
+    for( i in 1:maxit ) {
+      pt.old = pt
+      d = grad(x, pt, beta, dmix, ma, order=1:2)
+      d1 = d$d1
+      d2 = d$d2
+      left[d1>0] = pt[d1>0]
+      right[d1<0] = pt[d1<0]
+      pt = pt - d1 / d2
+      j = is.na(pt) | pt < left | pt > right
+      pt[j] = (left[j] + right[j]) * .5
+      if( max(abs(pt - pt.old)) <= 1e-14 * diff(range(grid))) break
+    }
+  }
+  else i = 0
+  if(dg[np] >= 0) pt = c(grid[np], pt)
+  if(dg[1] <= 0) pt = c(grid[1], pt)
+  if(length(pt) == 0) stop("no new support point found") # should not happen
+  g = grad(x, pt, beta, dmix, ma, order=0)$d0
+  names(pt) = names(g) = NULL
+  j = g >= tol
+  list(pt=pt[j], grad=g[j], num.iterations=i)
+}
+
+# Modal EM algorithm for computing all local modes of the gradient function
+
+maxgrad2 <- function(x, beta, dmix, ma, mix.pt, tol=-Inf, maxit=1000) {
+  pt = sort(c(x$mi,mix.pt))
+  eps = 1e-10 * diff(range(x$mi))
+  for( i in 1:maxit ) {
+    pt.old = pt
+    l = logd(x, beta, pt, which=c(1,0,0,0))$ld
+    dmix2 = drop(exp(l - ma) / dmix) + 1e-100
+    p = sweep(dmix2, 2, colSums(dmix2), "/")
+    pt = colSums(p * x$mi)
+    if( max(abs(pt - pt.old)) <= eps) break
+    pt = pt[c(1,which(diff(pt) >= eps, arr=TRUE)+1)]
+  }
+  g = grad(x, pt, beta, dmix, ma, order=0)$d0
+  names(pt) = names(g) = NULL
+  j = g >= tol
+  # print(i)
+  # stop()
+  list(pt=pt[j], grad=g[j], num.iterations=i)
+}
+
+# Equivalent to the modal EM algorithm, but it works for any component
+# distribution
+
+maxgrad3 <- function(x, beta, dmix, ma, mix.pt, tol=-Inf, maxit=1000) {
+  k = 20
+  pt = sort(c(x$mi,mix.pt))
+  eps = 1e-10 * diff(range(x$mi))
+  n = length(x)
+  for( i in 1:maxit ) {
+    pt.old = pt
+    points(pt[20], 0, col="green")
+    m = length(pt)
+    l = logd(x, beta, pt, which=c(1,0,1,1))
+    s = drop(exp(l$ld - ma) / dmix) + 1e-100
+    # print(range(colSums(s)))
+    # pt = pt - colSums(s * l$dt1) / colSums(s * (l$dt1 * l$dt1 + l$dt2))
+    # pt = pt + colSums(s * l$dt1) * beta / colSums(s)
+    # dt.bar = colSums(s * l$dt1) # / sum(s)
+    # pt = pt + colSums(s * l$dt1) / colSums(s * (sqrt(-l$dt2) + l$dt1)^2)
+    # pt2 = pt - colSums(s * l$dt1) / colSums(s * (l$dt1^2 + l$dt2))
+    d2.EM = colSums(s * l$dt2)
+    d2.NR = colSums(s * (l$dt1^2 + l$dt2))
+    d2.max = pmin(d2.EM / 1e3, d2.NR)
+    d2 = d2.EM + outer(d2.max - d2.EM, c(0,2^-(k:0)))
+    # d2 = d2.EM + outer(d2.max - d2.EM, seq(0,1,len=k+2))
+    # print(range(d2.max))
+    # print(cbind(colSums(s * l$dt1), d2.max))
+    # d = - colSums(s * l$dt1) / colSums(s * l$dt2)
+    ptv = pt - colSums(s * l$dt1) / d2
+    # print(ptv[20,])
+    dim(ptv) = NULL
+    gptv = grad(x, ptv, beta, dmix, ma, order=0)$d0
+    dim(gptv) = c(m, k+2)
+    gptv.exp = cbind(gptv, -Inf)
+    j = apply(apply(gptv.exp, 1, diff) < 0, 2, which.max)
+    # print(j)
+    pt = ptv[1:m + (j-1)*m]
+    # print(cbind(pt.old, pt))
+    if( max(abs(pt - pt.old)) <= eps) break
+    # pt = pt[c(1,which(diff(pt) >= eps * 1e-3, arr=TRUE)+1)]
+  }
+  # print(1 - range(colSums(s * (l$dt1 * l$dt1 + l$dt2))/ colSums(s * l$dt2)), 5)
+  g = grad(x, pt, beta, dmix, ma, order=0)$d0
+  names(pt) = names(g) = NULL
+  j = g >= tol
+  # print(pt[j])
+  # print(i)
+  # stop()
+  list(pt=pt[j], grad=g[j], num.iterations=i)
+}
+
+# gradient function
+
+grad <- function(x, pt, beta, dmix, ma, order=0) {
+  if(is.dden(dmix)) {
+    l = logd(x, beta, dmix$pt, which=c(1,0,0,0))$ld
+    ma = apply(l, 1, max)
+    dmix = drop(exp(l - ma) %*% dmix$pr) + 1e-100
+  }
+  g = vector("list", length(order))
+  names(g) = paste("d", order, sep="")
+  which = c(1,0,0,0)
+  if(any(order >= 1)) which[3:max(order+2)] = 1
+  dl = logd(x, beta, pt, which=which)
+  s = pmin(exp(dl$ld - ma), 1e100) / dmix
+  if(0 %in% order) g$d0 = colSums(s) - length(x)
+  if(1 %in% order) g$d1 = colSums(s * dl$dt1)
+  if(2 %in% order) g$d2 = colSums(s * (dl$dt1 * dl$dt1 + dl$dt2))
+  g
+}
+
+plotgrad <- function(x, beta, mix, ma, len=500,
+      xlab=expression(theta), ylab,
+      cex=1, pch=1, order=0, lower, upper, ...) {
+  if(missing(ylab)) {
+    ylab = switch(order+1,
+    expression(d(theta * "; " * G, beta)),
+    expression(d[1](theta * "; " * G, beta)),
+    expression(d[2](theta * "; " * G, beta))  )
+  }
+  if( missing(lower) || missing(upper) ) {
+    rth = range(x, beta)
+    if( missing(lower) ) lower = rth[1] # - .05 * diff(rth)
+    if( missing(upper) ) upper = rth[2] # + .05 * diff(rth)
+  }
+  pt = seq(lower, upper, len=len)
+  g = switch(order+1,
+    grad(x, pt, beta, mix, ma, order=order)$d0,
+    grad(x, pt, beta, mix, ma, order=order)$d1,
+    grad(x, pt, beta, mix, ma, order=order)$d2)
+  plot(pt, g, type="l", col="blue", xlab=xlab, ylab=ylab,
+       cex = cex, cex.axis = cex, cex.lab = cex, ... )
+  if(is.dden(mix)) {
+    j = mix$pr != 0
+    points(mix$pt[j], rep(0,length(mix$pt[j])), pch=pch, col="red")
+    abline(v=mix$pt[j], lty=3, col="red")
+  }
+  lines(c(lower, upper), c(0,0), col="black")
+}
+
+# The BFGS quasi-Newton method for updating pi, theta and beta, as specified
+
+# which     which of pi, theta and beta will be updated
+
+
+bfgs <- function(mix, beta, x, tol=1e-16, maxit=100, which=c(1,1,1), D=NULL) {
+  k1 = if(which[1]) length(mix$pr) - 1 else 0
+  k2 = if(which[2]) length(mix$pt) else 0
+  k3 = if(which[3]) length(beta) else 0
+  if( k1 == 0 ) which[1] = 0
+  if( sum(which) == 0 ) stop("No parameter specified to be updated in bfgs()")
+  dl = dll.snpmle(x, mix, beta, which=c(1,which), ind=TRUE)
+  ll = sum(dl$ll)
+  grad = c(if(which[1])
+    colSums(dl$dp[,1:k1,drop=FALSE] - dl$dp[,k1+1]) else NULL,
+    if(which[2]) colSums(dl$dt) else NULL,
+    if(which[3]) colSums(dl$db) else NULL)
+  r = list(mix=mix, beta=beta, ll=ll, grad=grad, convergence=1)
+  prmt = c(if(which[1]) r$mix$pr[-(k1+1)] else NULL,
+    if(which[2]) r$mix$pt else NULL,
+    if(which[3]) r$beta else NULL)
+  dlprmt = cbind(dl$dp[,1:k1,drop=FALSE] - dl$dp[k1+1], dl$dt, dl$db)
+  if(is.null(D)) D = diag(-1, nrow=k1+k2+k3)
+  else if(nrow(D) != k1+k2+k3) stop("Provided D has incompatible dimensions")
+  for(i in 1:maxit) {
+    old.r = r
+    old.prmt = prmt
+    prmt2 = drop( prmt - D %*% r$grad )
+    d1 = prmt2 - prmt
+    alpha = 1
+    if(which[1]) {
+      pr = prmt2[1:k1]
+      pr2 = c(pr, 1-sum(pr))
+      if(any(pr2 < 0)) {
+        step = pr2 - r$mix$pr
+        ratio = pmax(-pr2, 0) / abs(step)
+        jmax = which.max(ratio)
+        alpha = 1 - ratio[jmax]
+        pr2 = r$mix$pr + alpha * step
+        pr2[jmax] = 0
+      }
+    }
+    else pr2 = r$mix$pr
+    prmt2 = prmt + alpha * d1
+    if(which[2]) pt2 = prmt2[(k1+1):(k1+k2)] else pt2 = r$mix$pt
+    if(which[3]) beta2 = prmt2[(k1+k2+1):(k1+k2+k3)] else beta2 = r$beta
+    mix2 = dden(pt2, pr2)
+    r = lsch(r$mix, r$beta, mix2, beta2, x, which=which, brkt=TRUE)
+    if( any(r$mix$pr == 0) ) {
+      j = r$mix$pr == 0
+      r$mix = dden(r$mix$pt[!j], r$mix$pr[!j])
+      return( bfgs(r$mix, r$beta, x, tol, maxit, which) )
+    }
+    if( r$conv != 0 ) break
+    if( r$ll >= old.r$ll && r$ll <= old.r$ll + tol ) {convergence = 0; break}
+    g = r$grad - old.r$grad
+    prmt = c(if(which[1]) r$mix$pr[-(k1+1)] else NULL,
+      if(which[2]) r$mix$pt else NULL,
+      if(which[3]) r$beta else NULL)
+    d = prmt - old.prmt
+    dg = sum(d * g)
+    if( dg < 0 ) D = D +
+      (1 + drop(t(g) %*% D %*% g) / dg) * outer(d, d) / dg -
+        (outer(d, g) %*% D + D %*% outer(g, d)) / dg
+  }
+  r$num.iterations = i
+  r
+}
+
+# Line search for beta and mix
+
+# If brkt is TRUE, (mix1, beta1) must be an interior point
+
+# Two conditions must be satisfied at termination: (a) the Armijo rule; (b)
+
+# mix1       Current dden object
+# beta1      Current structural parameters
+# mix2       Next dden object, of the same size as mix1
+# beta2      Next structural parameters
+# x          Data
+# maxit      Maximum number of iterations
+# which      Indicators for pi, theta, beta, which their first derivatives
+#            of the log-likelihood should be computed and examined
+# brkt       Has a bracketing phase or not?
+
+# Output:
+
+# mix          Estimated mixing distribution
+# beta         Estimated beta
+# ll           Log-likelihood value at the estimate
+# convergence  = 0, converged successfully; = 1, failed
+
+lsch <- function(mix1, beta1, mix2, beta2, x,
+          maxit=100, which=c(1,1,1), brkt=FALSE ) {
+  k = length(mix1$pt)
+  convergence = 1
+  dl1 = dll.snpmle(x, mix1, beta1, which=c(1,which))
+  lla = ll1 = dl1$ll
+  grad1 = c(if(which[1]) dl1$dp[-k] - dl1$dp[k] else NULL,
+    if(which[2]) dl1$dt else NULL,
+    if(which[3]) dl1$db
+
+    else NULL)
+  d1 = c(if(which[1]) mix2$pr[-k] - mix1$pr[-k] else NULL,
+      if(which[2]) mix2$pt - mix1$pt else NULL,
+      if(which[3]) beta2 - beta1 else NULL)
+  d1.norm = sqrt(sum(d1*d1))
+  s = d1 / d1.norm
+  dla = g1s = sum(grad1 * s)
+  g1d1 = sum(grad1 * d1)
+  if(d1.norm == 0 || g1s <= 0) {
+    # print("d1.norm == 0 || g1s <= 0")
+    return( list(mix=mix1, beta=beta1, grad=grad1,
+                 ll=ll1, convergence=3) )
+  }
+  a = 0
+  b = 1
+  if(which[1] && any(mix2$pr == 0)) brkt = FALSE
+  for(i in 1:maxit) {
+    repeat {
+      m = dden( (1-b) * mix1$pt + b * mix2$pt, (1-b) * mix1$pr + b * mix2$pr)
+      beta = (1-b) * beta1 + b * beta2
+      if( valid.snpmle(x, beta, m) ) break
+      brkt = FALSE
+      b = a + 0.9 * (b - a)
+    }
+    dl = dll.snpmle(x, m, beta, which=c(1,which))
+    ll = dl$ll
+    grad = c(if(which[1]) dl$dp[-k] - dl$dp[k] else NULL,
+      if(which[2]) dl$dt else NULL,
+      if(which[3]) dl$db else NULL)
+    gs = sum(grad * s)
+    # With the following condition, "ll(a)" stays above the Armijo line and
+    # "ll(b)" either fails the gradient condition or falls below the Armijo line.
+    # Therefore, bracketing must have succeeded
+    if( brkt && gs > g1s * .5 && ll >= ll1 + g1d1 * b * .33 )
+      {a = b; b = 2 * b; lla = ll; dla = gs}
+    else break
+  }
+  if(i == maxit) brkt = FALSE
+  alpha = b; llb = ll; dlb = gs
+  for(i in 1:maxit) {
+    g1d = g1d1 * alpha
+    if( ll >= ll1 && ll + g1d <= ll ) {convergence=2; break}
+    if( brkt ) {
+      if( ll >= ll1 + g1d * .33 && abs(gs) <= g1s * .5 ) {convergence=0; break}
+      # With next condition, alpha is valid but too small
+      if( ll >= ll1 + g1d * .33 && gs > g1s * .5 )
+        { a = alpha; lla = ll; dla = gs }
+      else { b = alpha; llb = ll; dlb = gs }
+    }
+    else {
+      if( ll >= ll1 + g1d * .33 ) {convergence=0; break}
+      else { b = alpha; llb = ll; dlb = gs }
+    }
+    alpha = (a + b) * .5
+    # alpha = ci(a, b, lla, llb, dla, dlb)
+    m = dden( (1-alpha) * mix1$pt + alpha * mix2$pt,
+      (1-alpha) * mix1$pr + alpha * mix2$pr)
+    beta = (1-alpha) * beta1 + alpha * beta2
+    dl = dll.snpmle(x, m, beta, which=c(1,which))
+    ll = dl$ll
+    grad = c(if(which[1]) dl$dp[-k] - dl$dp[k] else NULL,
+      if(which[2]) dl$dt else NULL,
+      if(which[3]) dl$db else NULL)
+    gs = sum(grad * s)
+  }
+  if(i == 100) print("i = 100 in lsch()")
+  list(mix=dden((1-alpha) * mix1$pt + alpha * mix2$pt,
+         (1-alpha) * mix1$pr + alpha * mix2$pr),
+       beta=(1-alpha) * beta1 + alpha * beta2, grad=grad,
+       ll=ll, convergence=convergence, num.iterations=i)
+}
+
+# The Wolfe-Powell conditions are satisfied after line search.
+
+# An exact line search is perhaps unnecessary, since BFGS has a suplinear
+# order of convergence
+
+# Input:
+#
+# r       A list containing "mix" and "beta", for the current estimates
+#         of th mixing distribution and beta, respectively
+# beta2   Tentative new beta
+# x       Data
+# tol     Tolerance level
+# ...     Arguments passed to pll
+
+# Output:
+#
+# outputs from function pll, plus
+# convergence     0, converged successfully;
+#                 1, failed (likely due to precision limit reached)
+# num.npmle       0, number of the NPMLEs computed
+
+lsch.pll <- function(r, beta2, x, tol=1e-6, maxit=100, tol.npmle=tol*1e-4,
+          brkt=FALSE, ...) {
+  convergence = 0
+  num.npmle = 0
+  lla = ll1 = r$ll
+  d1 = beta2 - r$beta
+  d1.norm = sqrt(sum(d1*d1))
+  s = d1 / d1.norm
+  dla = g1s = sum(r$grad * s)
+  g1d1 = sum(r$grad * d1)
+  # if(d1.norm == 0 || g1s <= 0) return(r)
+  a = 0
+  alpha = 1
+  for(i in 1:maxit) {
+    repeat {
+      beta = (1-alpha) * r$beta + alpha * beta2
+      if( valid.snpmle(x, beta, r$mix) ) break
+      alpha = a + 0.9 * (alpha - a)
+      brkt = FALSE
+    }
+    r.alpha = pll(beta, r$mix, x, tol=tol.npmle, ...)
+    num.npmle = num.npmle + 1
+    d = beta - r$beta
+    gs = sum(r.alpha$grad * s)
+    if( brkt && gs > g1s * .5 && r.alpha$ll >= ll1 + g1d1 * alpha * .33)
+      {a = alpha; alpha = 2 * alpha; lla = r.alpha$ll; dla = gs}
+    else break
+    # if( sum(r.alpha$grad * r.alpha$grad) < 1e-12 ) {brkt=FALSE; break}
+  }
+  if(i == maxit) brkt = FALSE
+  b = alpha; llb = r.alpha$ll; dlb = gs
+  for(i in 1:maxit) {
+    if(b - a <= 1e-10) {convergence=1; break}
+    if(r.alpha$ll >= r$ll && r.alpha$ll <= r$ll  + tol) break
+    g1d = g1d1 * alpha
+    if( brkt ) {
+      if( r.alpha$ll >= r$ll + g1d * .33 & abs(gs) <= g1s * .5 ) break
+      if( r.alpha$ll >= r$ll + g1d * .33 & gs > g1s  * .5 )
+        {a = alpha; lla = r.alpha$ll; dla = gs}
+      else {b = alpha; llb = r.alpha$ll; dlb = gs}
+    }
+    else {
+      if( r.alpha$ll >= r$ll + g1d * .33 ) {convergence=0; break}
+      else {b = alpha; llb = r.alpha$ll; dlb = gs}
+    }
+    alpha = (a + b) * .5
+    # alpha = ci(a, b, lla, llb, dla, dlb)
+    beta = (1-alpha) * r$beta + alpha * beta2
+    r.alpha = pll(beta, r$mix, x, tol=tol.npmle, ...)
+    num.npmle = num.npmle + 1
+    d = beta - r$beta
+    gs = sum(r.alpha$grad * s)
+  }
+  r.alpha$convergence = convergence
+  r.alpha$num.npmle = num.npmle
+  r.alpha
+}
+
+# The functions examines whether the initial values are proper. If not,
+# proper ones are provided, by employing the user's function "initial."
+
+#
+# model    = 1, update mix only, with beta fixed and given
+#          = 2, update beta only, with mix fixed and given (not implemented)
+#          = 3, both mix and beta are updatable
+
+initial.snpmle <- function(x, init=NULL, kmax=NULL) {
+  if(is.null(init) || is.null(init$mix) ) {
+    init = initial(x, init$beta, init$mix, kmax=kmax)
+    init$ll = logLik.snpmle(x, init$beta, init$mix)
+  }
+  else {
+    init0 = initial(x, init$beta, kmax=kmax)
+    init0$ll = logLik.snpmle(x, init0$beta, init0$mix)
+    ll = logLik.snpmle(x, init0$beta, init$mix)
+    if(ll > init0$ll) init = list(beta=init0$beta, mix=init$mix, ll=ll)
+    else init = init0
+  }
+  init
+}
+
+# Computes the first derivatives of the log-likelihood function of pi,
+# theta and beta
+
+# INPUT:
+#
+# which     A 4-vector having values either 0 and 1, indicating which
+#           derivatives to be computed, in the order of pi, theta and beta
+# ind       = TRUE, returns the derivatives with respect to individual
+#                   observations
+#           = FALSE, returns the derivatives
+#
+# OUTPUT:   a list with ll, dp, dt, db, as specified by which
+
+dll.snpmle <- function(x, mix, beta, which=c(1,0,0,0), ind=FALSE) {
+  r = list()
+  dl = logd(x, beta, mix$pt, which=c(1,which[4:3],0))
+  lpt = dl$ld
+  ma = apply(lpt, 1, max)
+  if(which[1] == 1) {
+    r$ll = log(drop(exp(lpt - ma) %*% mix$pr)) + ma
+    if(!ind) r$ll = sum(r$ll)
+  }
+  if(sum(which[2:4]) == 0) return(r)
+  dmix = drop(exp(lpt - ma) %*% mix$pr) + 1e-100
+  dpt = pmin(exp(lpt - ma), 1e100)
+  dp = dpt / dmix
+  if(which[2] == 1) {
+    if(ind) r$dp = dp
+    else r$dp = colSums(dp)
+  }
+  if(sum(which[3:4]) == 0) return(r)
+  p = sweep(dp, 2, mix$pr, "*")
+  if(which[3] == 1) {
+    r$dt = p * dl$dt1
+    if(!ind) r$dt = colSums(r$dt)
+  }
+  if(which[4] == 0) return(r)
+  dl1 = dl$db1
+  r$db = apply(sweep(dl1, c(1,2), p, "*"), c(1,3), sum)
+  if(!ind) r$db = colSums(r$db)
+  r
+}
+
+
+# Cubic interpolation
+
+# If there is no valid solution, either (a+b)/2 is returned for sectioning
+# or a + bx * (b-a) is returned for bracketing
+
+# On input: b > a, dfa > 0
+
+# a      Left endpoint
+# b      Right endpoint
+# fa     Function value at a
+# fb     Function value at b
+# dfa    Function derivative at a
+# dfb    Function derivative at b
+# bx     in [0.5, 1], sectioning and interpolating;
+#        > 1, bracketing and extrapolating, with solution in (a, a + bx * (b-a))
+
+ci <- function(a, b, fa, fb, dfa, dfb, bx=.9) {
+  b2 = a + bx * (b - a)
+  A = rbind(a^(3:0), c(3*a*a,2*a,1,0), b^(3:0), c(3*b*b,2*b,1,0))
+  d = c(fa, dfa, fb, dfb)
+  c = try(solve(A, d, tol=0), silent=TRUE)
+  if(class(c) == "try-error") return( if(bx<=1) (a+b)/2 else b2 )
+  if(any(is.na(c))) return( if(bx<=1) (a+b)/2 else b2 )
+  D = 4 * c[2] * c[2] - 12 * c[1] * c[3]
+  if(D < 0) return( if(bx<=1) (a+b)/2 else b2 )
+  if(c[1] == 0) alpha = -c[3] / (2*c[2])
+  else {
+    D2 = sqrt(D)
+    alpha1 = (- 2*c[2] - D2) / (6*c[1])
+    alpha2 = (- 2*c[2] + D2) / (6*c[1])
+    if( alpha1 >= a && alpha2 >= a) alpha = min(alpha1, alpha2)
+    else alpha = max(alpha1, alpha2)
+  }
+  if( bx <= 1 ) {
+    tao = min(bx, 1-bx)
+    if( alpha >= b ) alpha = (a + b) * .5
+    else if( alpha <= a + tao * (b-a) ) alpha = a + tao * (b-a)
+    else if( alpha >= b - tao * (b-a) ) alpha = b - tao * (b-a)
+  }
+  if( bx > 1 && alpha >= b2 ) alpha = b2
+  alpha
+}
+
+valid.snpmle <- function(x, beta, mix)
+  valid(x, beta, mix) && all(mix$pr >= 0)
+
+collapse.snpmle <- function(mix, beta, x, tol=1e-8) {
+  mix = sort.dden(mix)
+  j = mix$pr == 0
+  if(any(j)) mix = dden(mix$pt[!j], mix$pr[!j])
+  if(is.null(attr(mix, "ll"))) attr(mix, "ll") = logLik.snpmle(x, beta, mix)
+  if( any(mix$pr <= 1e-3) ) {
+    j = mix$pr > 1e-3
+    mixt = mix
+    mixt$pt = mixt$pt[j]
+    mixt$pr = mixt$pr[j] / sum(mix$pr[j])
+    attr(mixt, "ll") = logLik.snpmle(x, beta, mixt)
+    if(attr(mixt,"ll")[1] + tol >= attr(mix,"ll")[1] ) mix = mixt
+  }
+  p = attr(attr(mix, "ll"), "p")
+  pj = colSums(p)
+  if( any(pj == 0) ) {
+    j = pj != 0
+    mix$pt = mix$pt[j]
+    mix$pr = mix$pr[j] / sum(mix$pr[j])
+    attr(mix, "ll") = logLik.snpmle(x, beta, mix)
+  }
+  repeat {
+    if(length(mix$pt) == 1) break
+    prec = min(diff(mix$pt))
+    mixt = unique(mix, prec=c(prec,0))
+    attr(mixt, "ll") = logLik.snpmle(x, beta, mixt)
+    if(attr(mixt,"ll")[1] + tol>= attr(mix,"ll")[1]) mix = mixt
+    else break
+  }
+  mix
+}
+
+print.snpmle <- function(verb, x, mix, beta, maxdg) {
+  switch(verb,
+         {cat("theta =", mix$pt, "\n")},
+         print(mix),
+         cat("beta =", beta, "\n"),
+         cat("log-likelihood =", logLik.snpmle(x, beta, mix)[1], "\n"),
+         cat("max gradient = ", maxdg, "\n")  )
+}
+

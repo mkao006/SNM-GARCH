@@ -1,0 +1,775 @@
+######################################################################
+## Rewrite the logd.mgarch function to improve the efficiency of the
+## function
+######################################################################
+
+## Current version
+logd.mgarch <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2 ## Let it be beta[4] for now
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+
+    sigma.t <- sqrt(sigma.t)
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3 /rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.alpha <- cumsum(c(0, beta[2]^(0:(T-2))))
+        cp.beta <- double(T)
+        cp.beta[1:2] <- 0
+        for(i in 3:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[1:(i - 2)]^2))
+        }
+
+        dsigmadalpha0 <- cp.alpha #1
+
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        cp.beta2 <- double(T)
+        cp.beta2[1] <- 0
+        for(i in 2:T){
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[1:(i - 1)]^2))
+        }
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+
+
+        dbvec <- array(c(rep(dsigmadalpha0, lpt),
+                         rep(dsigmadalpha1, lpt),
+                         rep(dsigmadbeta1, lpt),
+                         rep(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+## Just rearrange the variables and the group the loops
+logd.mgarch1 <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2 ## Let it be beta[4] for now
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+
+    sigma.t <- sqrt(sigma.t)
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3/
+                           rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.beta = cp.beta2 = double(T)
+
+        for(i in 2:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[1:(i - 2)]^2))
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[1:(i - 1)]^2))
+        }
+        cp.beta[1:2] <- 0
+        cp.beta2[1] <- 0
+
+        dsigmadalpha0 <- cumsum(c(0, beta[2]^(0:(T-2)))) #1
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+
+
+        dbvec <- array(c(rep(dsigmadalpha0, lpt),
+                         rep(dsigmadalpha1, lpt),
+                         rep(dsigmadbeta1, lpt),
+                         rep(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+
+
+## Use numerical gradient
+logd.mgarch2 <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+    sigma.t <- sqrt(sigma.t)
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+    }
+    if(which[2] == 1){
+        incmt <- 1e-6
+        dldb1 <- (logd.mgarch2(xt, beta + c(incmt, 0, 0, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld -
+                  logd.mgarch2(xt, beta - c(incmt, 0, 0, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld)/(2 * incmt)
+        dldb2 <- (logd.mgarch2(xt, beta + c(0, incmt,  0, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld -
+                  logd.mgarch2(xt, beta - c(0, incmt, 0, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld)/(2 * incmt)
+        dldb3 <- (logd.mgarch2(xt, beta + c(0, 0, incmt, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld -
+                  logd.mgarch2(xt, beta - c(0, 0, incmt, 0, 0),
+                              pt, which = c(1, 0, 0, 0))$ld)/(2 * incmt)
+        dldb4 <- (logd.mgarch2(xt, beta + c(0, 0, 0, incmt, 0),
+                              pt, which = c(1, 0, 0, 0))$ld -
+                  logd.mgarch2(xt, beta - c(0, 0, 0, incmt, 0),
+                              pt, which = c(1, 0, 0, 0))$ld)/(2 * incmt)
+        dldb5 <- (logd.mgarch2(xt, beta + c(0, 0, 0, 0, incmt),
+                              pt, which = c(1, 0, 0, 0))$ld -
+                  logd.mgarch2(xt, beta - c(0, 0, 0, 0, incmt),
+                              pt, which = c(1, 0, 0, 0))$ld)/(2 * incmt)
+        dl$db1 <- array(c(dldb1, dldb2, dldb3, dldb4, dldb5),
+                        dim = c(T, lpt, lb))
+    }
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+
+
+## Replace rep with rep.int and remove rev
+logd.mgarch3 <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <- double(T) ## The conditional standard deviation
+    sigma.t[1] <- beta[4]^2 ## Let it be beta[4] for now
+    for(i in 2:T){
+        sigma.t[i] <- beta[1] + beta[2] * sigma.t[i - 1] +
+            beta[3] * xt[i - 1]^2
+    }
+    sigma.t <- sqrt(sigma.t)
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3/
+                           rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.beta = cp.beta2 = double(T)
+        for(i in 2:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[(i - 2):1]^2))
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[(i - 1):1]^2))
+        }
+        cp.beta[1:2] <- 0
+        cp.beta2[1] <- 0
+        dsigmadalpha0 <- cumsum(c(0, beta[2]^(0:(T-2)))) #1
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+        dbvec <- array(c(rep.int(dsigmadalpha0, lpt),
+                         rep.int(dsigmadalpha1, lpt),
+                         rep.int(dsigmadbeta1, lpt),
+                         rep.int(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+
+## Use the filter function for calculating the sigma
+logd.mgarch4 <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <-
+        sqrt(c(beta[4]^2,
+               beta[1] * ((1 - cumprod(rep(beta[2], T - 1))))/(1 - beta[2]) +
+               cumprod(rep(beta[2], T - 1)) * beta[4]^2 +
+               beta[3] * as.numeric(filter(xt[-T]^2, beta[2], "recursive"))))
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3/
+                           rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.beta = cp.beta2 = double(T)
+        for(i in 2:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[(i - 2):1]^2))
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[(i - 1):1]^2))
+        }
+        cp.beta[1:2] <- 0
+        cp.beta2[1] <- 0
+        dsigmadalpha0 <- cumsum(c(0, beta[2]^(0:(T-2)))) #1
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+        dbvec <- array(c(rep.int(dsigmadalpha0, lpt),
+                         rep.int(dsigmadalpha1, lpt),
+                         rep.int(dsigmadbeta1, lpt),
+                         rep.int(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+
+## Use the filter function for all the loops possible
+logd.mgarch5 <- function(xt, beta, pt, which){
+    xt <- as.numeric(xt)
+    T <- length(xt)
+    lpt <- length(pt)
+    lb <- length(beta)
+    dl <- vector("list", length = 4)
+    names(dl) <- c("ld", "db1", "dt1", "dt2")
+    sigma.t <-
+        sqrt(c(beta[4],
+               beta[1] * ((1 - cumprod(rep(beta[2], T - 1))))/(1 - beta[2]) +
+               cumprod(rep(beta[2], T - 1)) * beta[4] +
+               beta[3] * as.numeric(filter(xt[-T]^2, beta[2], "recursive"))))
+    if(which[1] == 1){
+        dl$ld <- matrix(-(0.5 * log(2 * pi) + log(sigma.t) +
+                          rep(log(pt), each = T) +
+                          ((xt - beta[5])^2/sigma.t^2)/rep(2 * pt^2, each = T)),
+                        nr = T, nc = lpt)
+        ## The speed up of the recode doesn't not appear significant
+        # T * m matrix
+    }
+    if(which[2] == 1){
+        dldsigma <- matrix((xt - beta[5])^2/sigma.t^3/
+                           rep(pt^2, each = T) - 1/sigma.t,
+                           nr = T, nc = lpt)
+        sig.vec <- 2 * sigma.t
+        cp.beta = cp.beta2 = double(T)
+        for(i in 2:T){
+            cp.beta[i] <- beta[3] * sum((1:(i - 2)) * beta[2]^(0:(i - 3)) *
+                              rev(xt[(i - 2):1]^2))
+            cp.beta2[i] <- sum(beta[2]^(0:(i - 2)) *
+                              rev(xt[(i - 1):1]^2))
+        }
+        cp.beta[1:2] <- 0
+        cp.beta2[1] <- 0
+        dsigmadalpha0 <- cumsum(c(0, beta[2]^(0:(T-2)))) #1
+        dsigmadalpha1 <-
+            (beta[1] *
+             cumsum(c(0, 0, 1:(T - 2) * beta[2]^(0:(T - 3))))) +
+                 c(0, 1:(T - 1) * beta[2]^(0:(T - 2)) * beta[4]^2) + cp.beta #2
+        dsigmadbeta1 <- cp.beta2 #3
+        dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1)) #4
+        dldmu <- (xt - beta[5])/sigma.t^2 / rep(pt^2, each = T) #5
+        dim(dldmu) <- c(T, lpt)
+        dbvec <- array(c(rep.int(dsigmadalpha0, lpt),
+                         rep.int(dsigmadalpha1, lpt),
+                         rep.int(dsigmadbeta1, lpt),
+                         rep.int(dsigmadsigma, lpt)),
+                       dim = c(T, lpt, lb - 1))
+        dldsigma <- array(dldsigma/sig.vec, dim = c(T, lpt, lb - 1))
+        dl$db1 <- abind(dldsigma * dbvec, dldmu, along = 3)
+    }
+    if(which[3] == 1){
+      dt1 = (xt - beta[5])^2/sigma.t^2 / rep(pt^3, each=T) - 1/rep(pt, each=T)
+      dim(dt1) = c(T,lpt)
+      dl$dt1 = dt1
+    }
+    if(which[4] == 1){
+        dt2 <- (-3 * (xt - beta[5])^2)/sigma.t^2 /rep(pt^4, each = T) +
+            1/(rep(pt^2, each = T))
+        dim(dt2) = c(T, lpt)
+        dl$dt2 = dt2
+    }
+    dl
+}
+
+
+
+
+
+
+
+## Benchmark and test the speed of different versions of logd.mgarch.
+check <- 1:1000
+benchmark(logd.mgarch(check, rep(0.5, 5), 1, which = rep(1, 4)),
+          logd.mgarch1(check, rep(0.5, 5), 1, which = rep(1, 4)),
+          logd.mgarch2(check, rep(0.5, 5), 1, which = rep(1, 4)),
+          logd.mgarch3(check, rep(0.5, 5), 1, which = rep(1, 4)),
+          logd.mgarch4(check, rep(0.5, 5), 1, which = rep(1, 4)),
+          replications = 50, order = "relative")
+
+
+
+## This shows that the only element that needs to be speed up is the
+## derivatives. If sped up sufficiently, the improvement can be an
+## order of 10, 20 or even more.
+check <- rnorm(1000)
+benchmark(logd.mgarch(check, c(0.5, 0.5, 0.5, 0.5), pt = 1,
+                        which = c(1, 0, 0, 0)),
+          logd.mgarch(check, c(0.5, 0.5, 0.5, 0.5), 1,
+                        which = c(0, 1, 0, 0)),
+          logd.mgarch(check, c(0.5, 0.5, 0.5, 0.5), 1,
+                        which = c(0, 0, 1, 0)),
+          logd.mgarch(check, c(0.5, 0.5, 0.5, 0.5), 1,
+                        which = c(0, 0, 0, 1)),
+          replications = 100, order = "relative")
+
+
+
+
+## Bench mark the recursion
+loopRec <- function(x, alpha){
+    n <- length(x)
+    y <- double(n)
+    for(i in 1:n){
+        y[i] <- sum(cumprod(rep(alpha, i)) * rev(x[1:i]))
+    }
+    y
+}
+
+loopRec(c(1, 2, 3), 0.5)
+
+
+
+loopRec2 <- function(x, alpha){
+    n <- length(x)
+    y <- numeric(n)
+    for(i in seq_len(n)){
+        y[i] <- sum(cumprod(rep.int(alpha, i)) * x[i:1])
+    }
+    y
+}
+loopRec2(c(1, 2, 3), 0.5)
+
+loopRec3 <- function(x, alpha){
+    n <- length(x)
+    y <- numeric(n)
+    aa <- cumprod(rep.int(alpha, n))
+    for(i in seq_len(n)){
+        y[i] <- sum(aa[seq_len(i)] * x[i:1])
+    }
+    y
+}
+loopRec3(c(1, 2, 3), 0.5)
+
+loopRec4 <- function(x, alpha){
+   n <- length(x)
+   y <- numeric(n)
+   if (n == 0) return(y)
+   y[1] <- alpha * x[1]
+   for(i in seq_len(n)[-1]){
+      y[i] <- alpha * (y[i-1] + x[i])
+   }
+   y
+}
+
+loopRec5 <- function(x, alpha) {
+    as.vector(filter(x*alpha, alpha, method="recursive"))
+}
+
+
+matRec <- function(x, alpha){
+    n <- length(x)
+    exp.mat <- matrix(rep(x, each = n), nc = n, byrow = TRUE)
+    up.mat <- sweep(matrix(cumprod(rep(alpha, n)), nc = n, nr = n,
+                                   byrow = TRUE), 1,
+                           c(1, cumprod(rep(1/alpha, n - 1))), FUN = "*")
+    up.mat[lower.tri(up.mat)] <- 0
+    colSums(up.mat * exp.mat)
+}
+
+
+matRec2 <- function(x, alpha){
+    n <- length(x)
+    exp.mat <- matrix(rep(x, each = n), nc = n, byrow = TRUE)
+    up.mat1 <- matrix(cumprod(rep(alpha, n)), nc = n, nr = n, byrow = TRUE)
+    up.mat2 <- matrix(c(1, cumprod(rep(1/alpha, n - 1))), nc = n, nr = n)
+    up.mat <- up.mat1 * up.mat2
+    up.mat[lower.tri(up.mat)] <- 0
+    colSums(up.mat * exp.mat)
+}
+
+matRec3 <- function(x, alpha) {
+  n <- length(x)
+  v <- cumprod(rep(alpha,n))
+  sapply(seq_along(x), function(j) v[j:1] %*% x[1:j])
+}
+
+
+## Check whether value is correct
+all.equal(loopRec(1:1000, 0.5), loopRec2(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), loopRec3(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), loopRec4(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), loopRec5(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), matRec(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), matRec2(1:1000, 0.5))
+all.equal(loopRec(1:1000, 0.5), matRec3(1:1000, 0.5))
+
+## benchmark the functions.
+benchmark(loopRec(1:1000, 0.5), loopRec2(1:1000, 0.5), loopRec3(1:1000, 0.5),
+          loopRec4(1:1000, 0.5), loopRec5(1:1000, 0.5),
+          matRec(1:1000, 0.5), matRec2(1:1000, 0.5), matRec3(1:1000, 0.5),
+          replications = 50, order = "relative")
+
+## TODO: Implementation using Rcpp to see how much mroe faster we can go.
+
+
+
+
+
+
+
+## Don't really quite understand the output of this bit of code
+tmpf = tempfile()
+Rprof(tmpf)
+replicate(20, logd.mgarch(check, c(0.5, 0.5, 0.5, 0.5), 1,
+                          which = c(0, 1, 0, 0)))
+Rprof(NULL)
+summaryRprof(tmpf)
+
+
+
+#tracemem
+
+#foreach
+library(foreach)
+d <- data.frame(x=1:10, y=rnorm(10))
+s <- foreach(d=iter(d, by='row'), .combine=rbind) %dopar% d
+
+
+#doMC
+#%dopar%
+
+# Cran task view on HPC
+
+Rcmdr
+
+
+#iterators
+a <- array(1:8, c(2, 2, 2))
+# iterate over all the matrices
+it <- iapply(a, 3)
+as.list(it)
+# iterate over all the columns of all the matrices
+it <- iapply(a, c(2, 3))
+as.list(it)
+# iterate over all the rows of all the matrices
+it <- iapply(a, c(1, 3))
+as.list(it)
+
+
+
+
+######################################################################
+## Recurrence relationship
+######################################################################
+
+## Raw implementation
+fibRaw <- function(n){
+    fib <- double(n)
+    fib[1:2] <- c(0, 1)
+    for(i in 3:n){
+        fib[i] = fib[i - 1] + fib[i - 2]
+    }
+    fib
+}
+
+## Analytic implementation solving the recurrence relationshp
+fibAnalytic <- function(n){
+    rho <- (1 + sqrt(5))/2
+    phi = -(rho^-1)
+    fib = (rho^(0:(n - 1)) - phi^(0:(n - 1)))/sqrt(5)
+    fib
+}
+
+## Using the memoization technique
+fibonacci <- local({
+    memo <- c(1, 1, rep(NA, 1000))
+    f <- function(x) {
+        if(x == 0) return(0)
+        if(x < 0) return(NA)
+        if(x > length(memo))
+        stop("'x' too big for implementation")
+        if(!is.na(memo[x])) return(memo[x])
+        ans <- f(x-2) + f(x-1)
+        memo[x] <<- ans
+        ans
+    }
+})
+
+
+## Using Rcpp
+## inline to compile, load and link the C++ code
+require(inline)
+
+## we need a pure C/C++ function as the generated function
+## will have a random identifier at the C++ level preventing
+## us from direct recursive calls
+incltxt <- '
+int fibonacci(const int x) {
+   if (x == 0) return(0);
+   if (x == 1) return(1);
+   return (fibonacci(x - 1)) + fibonacci(x - 2);
+}'
+
+## now use the snipped above as well as one argument conversion
+## in as well as out to provide Fibonacci numbers via C++
+fibRcpp <- cxxfunction(signature(xs="int"),
+                   plugin="Rcpp",
+                   incl=incltxt,
+                   body='
+   int x = Rcpp::as<int>(xs);
+   return Rcpp::wrap( fibonacci(x) );
+')
+
+library(rbenchmark)
+benchmark(fibRaw(1000), fibAnalytic(1000), fibonacci(1000),
+          fibRcpp(1000),
+          replications = 1000,
+          order = "relative")
+
+
+## The speed up is impressive!
+# a = 0.8, b = 0.1
+# init = c(1, 1)
+test <- function(n){
+    tr1^(0:n) + tr2^(0:n)
+}
+test2 <- function(n){
+    ser <- double(n)
+    ser[1:2] <- 1
+    for(i in 3:n){
+        ser[i] = 0.8 * ser[i - 1] + 0.1 * ser[i - 2]
+    }
+    ser
+}
+
+test(10)
+test2(10)
+
+
+## Test function for solving simple recurrence
+rgen <- function(a, b, i1, i2, n){
+    rand <- double(n)
+    rand[1:2] <- c(i1, i2)
+    for(i in 3:n){
+        rand[i] = a * rand[i - 1] + b * rand[i - 2] + i
+    }
+    rand
+}
+
+sgen <- function(a, b, i1, i2, n){
+    roots <- as.numeric(polyroot(c(-b, -a, 1)))
+    ev <- solve(matrix(c(1, 1, roots[1], roots[2]), nc = 2, byrow = TRUE),
+                c(i1, i2))
+    ev[1] * roots[1]^(0:n) + ev[2] * roots[2]^(0:n) # + Need to add
+
+}
+
+a = 0.8
+b = 0.1
+i1 = 1
+i2 = 1
+rgen(a, b, i1, i2, 10)
+sgen(a, b, i1, i2, 10)
+
+benchmark(rgen(a, b, i1, i2, 1000), sgen(a, b, i1, i2, 1000),
+          replications = 100, order = "relative")
+
+
+######################################################################
+## have a look at the filter function in detail
+######################################################################
+
+
+
+filter(1:5, 0.5, method = "recursive")
+
+
+
+test.ts <- ts(matrix(c(1:5, 5:1), nc = 2))
+
+filter(test.ts, c(0.5, 0.1), "recursive")
+
+
+xt <- seq(0.1, 1, length = 1000)
+alpha <- 0.8
+beta <- 0.1
+gamma <- 0.001
+sigma1 <- 1
+
+## Loop for sigma
+lp <- function(xt, alpha, beta, gamma, sigma1){
+    loop <- double(1000)
+    loop[1] <- sigma1^2
+    for(i in 2:100){
+        loop[i] <- gamma + alpha * loop[i - 1] + beta * xt[i - 1]^2
+    }
+    loop
+}
+
+## Filter for sigma
+ft <- function(xt, alpha, beta, gamma, sigma1){
+    filt <- cumsum(gamma * cumprod(c(1, rep(alpha, 999)))) +
+        cumprod(rep(alpha, 1000)) * sigma1^2 +
+            beta * as.numeric(filter(xt^2, alpha, "recursive"))
+    filt
+}
+
+## filter and geometric series for sigma
+ft2 <- function(xt, alpha, beta, gamma, sigma1){
+    filt <- gamma * ((1 - cumprod(rep(alpha, 1000))))/(1 - alpha) +
+        cumprod(rep(alpha, 1000)) * sigma1 +
+    beta * as.numeric(filter(xt^2, alpha, "recursive"))
+    filt
+}
+
+
+
+
+
+
+benchmark(ft(xt, alpha, beta, gamma, sigma1),
+          ft2(xt, alpha, beta, gamma, sigma1),
+          lp(xt, alpha, beta, gamma, sigma1),
+          replications = 1000, order = "relative")
+
+## have a loop at filter
