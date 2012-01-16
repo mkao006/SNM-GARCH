@@ -1,9 +1,0 @@
-\frametitle {Package Description}
-  To carry out the analysis, an R package was written and
-  developed. The package container's two main functions:\\
-  \vspace{5mm}
-  \verb|mdemodulation| \qquad  for extracting the amplitude and the phase.\\
-  \verb|mmodulation| \qquad for obtaining the filtered series $y_t'$.\\
-  \vspace{5mm}
-  Several other accessor functions are also available.
-

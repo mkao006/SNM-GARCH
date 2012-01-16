@@ -1,1 +1,0 @@
-spData <- get.hist.quote("SPY", quotes = c("Close"), start = "2006-01-01", end = "2008-12-31")
