@@ -5,14 +5,16 @@
 
 set.seed(587)
 ## Data <- rnorm(100, 0, 1)
-Data <- rnorm(10, 0, 1e-3)
+Data <- rnorm(10, 0, 1e-10)
 class(Data) <- "mgarch"
 
 ## Data the derivatives w.r.t the betas
 beta.diff <- function(x = Data,
-                      beta = c(initial.mgarch(x)$beta[1:4], 2),
-                      incremt = 1e-12,
-                      pt = c(1, 2), which.beta = 1:length(beta)) {
+                      beta = c(1e-4, 0.2, 0.8, 1e-8, 2),
+                      incremt = 1e-10,
+                      pt = c(1, 2), which.beta = 1:length(beta),
+                      out = c("print", "list")) {
+    out = match.arg(out)
     index0 = rep(0, 5)
     for(i in which.beta) {
         index = index0
@@ -22,9 +24,9 @@ beta.diff <- function(x = Data,
               logd.mgarch(x, pt = pt, beta = beta - index * incremt,
                           which = c(1, 0, 0))$ld)/(2 * incremt)
     d2 = logd.mgarch(x, pt = pt, beta = beta, which = c(0, 1, 0))$db[,,i]
-    print(max(abs(d1 - d2)))
+    if(out == "print") print(max(abs(d1 - d2)))
     }
-#    list(nd = d1, ad = d2)
+    if(out == "list") list(nd = d1, ad = d2)
 }
 cat("Checking derivatives of Beta (Should all be zero):\n")
 beta.diff()
@@ -32,8 +34,8 @@ beta.diff()
 
 ## Data the derivatives w.r.t the support points (theta)
 theta1.diff <- function(x = Data,
-                      beta = c(initial.mgarch(x)$beta[1:4], 2),
-                      incremt = 1e-12,
+                      beta = c(1e-4, 0.2, 0.8, 1e-8, 2),
+                      incremt = 1e-10,
                       pt = c(1, 2)) {
   d1 = (logd.mgarch(x, pt = pt + incremt, beta = beta,
                     which = c(1, 0, 0, 0))$ld -
