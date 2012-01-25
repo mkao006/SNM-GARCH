@@ -211,12 +211,18 @@ summary.mgarch <- function(sol, digits = 5){
             max(abs(sol$grad)) <=
             eval(parse(text = paste("1e-", digits, sep = ""))),
             "\n", sep = ""))
+  cat(paste("Log-likelihood: ", round(sol$ll, 4), "\n", sep = ""))
+}
+
+## Extract coefficients
+coef.mgarch <- function(sol){
+  round(sol$beta, 7)
 }
 
 
-
 ######################################################################
-## Modify the cnmms function just for scaling
+## Modify the cnmms function for scaling and also adding the class to
+## the returned object
 ######################################################################
 
 cnmms <- function (x, init = NULL, maxit = 1000,
@@ -318,6 +324,9 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     }
     else grad = r$grad
     grad[1:m] = grad[1:m] - sum(rep(w, len = length(x)))
-    list(mix = mix, beta = beta, num.iterations = i,
-         ll = attr(mix,"ll")[1], grad = grad, convergence = convergence)
+    result <- list(mix = mix, beta = beta, num.iterations = i,
+                   ll = attr(mix,"ll")[1], grad = grad,
+                   convergence = convergence)
+    attr(result, "class") <- "mgarch"
+    result
 }
