@@ -70,10 +70,25 @@ logd.mgarch <- function(xt, beta, pt, which){
     ## Use product rule to compute the first order derivative of the
     ## conditional variance parameters (omega, alpha, beta)
 
-    dldsigma <- -1/sigma.t +
-      (outer(sigma.t^-1, pt^-1) * sd_xi * xt + mu_xi) *
-        (outer(sigma.t^-2, pt^-1) * sd_xi * xt) *
-          (beta[5]^-2 * Heaviside(z_xi) + beta[5]^2 * Heaviside(-z_xi))
+    ## This is the derivative solved by me.
+    ## dldsigma <- -1/sigma.t +
+    ##   (outer(sigma.t^-1, pt^-1) * sd_xi * xt + mu_xi) *
+    ##     (outer(sigma.t^-2, pt^-1) * sd_xi * xt) *
+    ##       (beta[5]^-2 * Heaviside(z_xi) + beta[5]^2 * Heaviside(-z_xi))
+
+    ## This is the derivative given by the symbolic tool
+    dldsigma <- outer(sigma.t^-2, pt^-3) * xt * sd_xi * log(beta[5]) *
+      (sqrt(2/pi) * (beta[5]^2 - 1) *
+       outer(sigma.t, pt) + xt * sd_xi * beta[5])^2 *
+         beta[5]^(2 * (sign(sqrt(2/pi)* (beta[5] - 1/beta[5]) +
+                       (xt * sd_xi)/outer(sigma.t, pt)) - 1)) *
+           2 * Delta(sqrt(2/pi) * (beta[5] - 1/beta[5]) +
+                     (xt * sd_xi)/outer(sigma.t, pt)) +
+           (xt * sd_xi * (sqrt(2/pi) * (beta[5]^2 - 1) * outer(sigma.t, pt) +
+                          xt * sd_xi * beta[5]) *
+            beta[5]^(2 * sign(sqrt(2/pi) * (beta[5] - 1/beta[5]) +
+                         (xt * sd_xi)/outer(sigma.t, pt)) - 1))/
+                           outer(sigma.t^3, pt^2) - 1/sigma.t
 
     sig.vec <- 2 * sigma.t
     convFilter <- 1:(T - 2) * cumprod(c(1, rep(beta[2], T - 3)))
@@ -147,6 +162,7 @@ valid.mgarch <- function(x, beta, mix){
 ## NOTES (Michael): Sometimes the coefficients given by fGarch voilates
 ## the stationarity assumption so we scale the coefficients to satisfy
 ## the assumption
+## TODO (Michael): Write a catch function if the garchFit fails
 initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
     if(is.null(beta)){
         gf <- garchFit(data = as.numeric(x), trace = FALSE,
@@ -163,7 +179,7 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
 
 ## Function to determine the grid
 gridpoints.mgarch <- function(x, beta, grid){
-  seq(1e-10, 20, length = grid)
+  seq(0.001, 20, length = grid)
 }
 
 ## The weights function, this is useful when the data is discrete and
@@ -172,7 +188,7 @@ weights.mgarch <- function(x) 1
 
 ## Function to restrict the space of the support points
 suppspace.mgarch <- function(x, beta, mix){
-  c(0, 1e10)
+  c(0.001, 20)
 }
 
 ## Function for converting different class of time series to mgarch
@@ -186,12 +202,25 @@ as.mgarch <- function(x){
   
 
 
+## summary result of the solution
+summary.mgarch <- function(sol, digits = 5){
+  cat(paste("Solution Standard Deviation: ",
+              round(sqrt(sum(sol$mix$pr * sol$mix$pt^2)), 4), "\n", sep = ""))
+  cat(paste("Persistence: ", round(sum(sol$beta[2:3]), 4), "\n", sep = ""))
+  cat(paste("Maximum gradient equal to zero: ",
+            max(abs(sol$grad)) <=
+            eval(parse(text = paste("1e-", digits, sep = ""))),
+            "\n", sep = ""))
+}
+
+
+
 ######################################################################
 ## Modify the cnmms function just for scaling
 ######################################################################
 
 cnmms <- function (x, init = NULL, maxit = 1000,
-                   model = c("spmle", "npmle"), tol = 1e-20,
+                   model = c("spmle", "npmle"), tol = 1e-5,
                    grid = 100, kmax = Inf,
                    plot = c("null", "gradient", "prob"), verb = 0){
     plot = match.arg(plot)
@@ -244,28 +273,32 @@ cnmms <- function (x, init = NULL, maxit = 1000,
         switch(plot, gradient = plotgrad(x, beta, mix, pch = 1), 
             prob = plot(x, mix, beta))
 
-        ## Scale the error distribution and the beta, everything else is
-        ## remain unchanged from the nspmix package
-        
+        ## NOTES (Michael): There is a problem here, some times the
+        ##                  algorithm just breaks out here before the
+        ##                  last step of scaling so that the final
+        ##                  solution is actually not scaled.
+
         ## Start of scaling
-        sc <- sqrt(sum(r$mix$pr * r$mix$pt^2))
+        sc <- sqrt(sum(mix$pr * mix$pt^2))
         print("Likelihood Before Scaling:")
-        print.snpmle(verb, x, r$mix, r$beta, gradient)
+        print.snpmle(verb, x, mix, beta, gradient)
         if(abs(sc - 1) > tol & sc < 5){
-            new.sc <- ifelse(valid(x, c(r$beta[1] * sc,
-                                        r$beta[2],
-                                        r$beta[3] * sc,
-                                        r$beta[4] * sc,
-                                        r$beta[5])),
-                             sc, (1/(r$beta[2] + r$beta[3]) - 1e-7))
-            print(paste("Scaled by :", new.sc, sep = ""))
-            r$mix$pt <- r$mix$pt/new.sc
-            r$beta[c(1, 3)] <- r$beta[c(1, 3)] * new.sc^2
-            r$beta[4] <- r$beta[4] * new.sc
-            r$conv <- 4
+          new.sc <- ifelse(valid(x, c(beta[1] * sc,
+                                      beta[2],
+                                      beta[3] * sc,
+                                      beta[4] * sc,
+                                      beta[5])),
+                           sc, (1/(beta[2] + beta[3]) - 1e-7))
+          print(paste("Scaled by :", new.sc, sep = ""))
+          cat(paste("Close to boundary?: ", !(new.sc == sc), "\n", sep = ""))
+          mix$pt <- mix$pt/new.sc
+          beta[c(1, 3)] <- beta[c(1, 3)] * new.sc^2
+          beta[4] <- beta[4] * new.sc          
         }
         print("Likelihood After Scale:")
-        print.snpmle(verb, x, r$mix, r$beta, gradient)
+        print.snpmle(verb, x, mix, beta, gradient)
+
+        print(beta)
         ## End of scaling
         
         if (r$ll >= ll1 - tol * abs(r$ll) && r$ll <= ll1 + tol * 
@@ -285,6 +318,6 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     }
     else grad = r$grad
     grad[1:m] = grad[1:m] - sum(rep(w, len = length(x)))
-    list(mix = mix, beta = beta, num.iterations = i, ll = attr(mix, 
-        "ll")[1], grad = grad, convergence = convergence)
+    list(mix = mix, beta = beta, num.iterations = i,
+         ll = attr(mix,"ll")[1], grad = grad, convergence = convergence)
 }
