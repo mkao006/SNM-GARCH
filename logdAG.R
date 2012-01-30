@@ -21,12 +21,8 @@ library(fGarch)
 ## TODO (Michael): Handle the class in a better way. Don't like coercing
 ##                 to numeric.
 ## TODO (Michael): Improve the efficiency of this code (e.g. remove outer)
-## TODO (Michael): Using the unbiased estimate of sigma0 causes problem
-##                 when carrying our the scaling. Since now sigma0 is a
-##                 function of both beta[1], beta[2] and beta[3] and a
-##                 constant scaling factor may not exist.
 ## TODO (Michael): Still not sure why a few analytical derivatives are
-##                 significantly differet to the numerical gradient for
+##                 significantly different to the numerical gradient for
 ##                 the derivative of beta[1] and second order for theta.
 
 ## NOTES (Michael): It appears that the analytical gradient are correct
@@ -70,25 +66,11 @@ logd.mgarch <- function(xt, beta, pt, which){
     ## Use product rule to compute the first order derivative of the
     ## conditional variance parameters (omega, alpha, beta)
 
-    ## This is the derivative solved by me.
-    ## dldsigma <- -1/sigma.t +
-    ##   (outer(sigma.t^-1, pt^-1) * sd_xi * xt + mu_xi) *
-    ##     (outer(sigma.t^-2, pt^-1) * sd_xi * xt) *
-    ##       (beta[5]^-2 * Heaviside(z_xi) + beta[5]^2 * Heaviside(-z_xi))
-
-    ## This is the derivative given by the symbolic tool
-    dldsigma <- outer(sigma.t^-2, pt^-3) * xt * sd_xi * log(beta[5]) *
-      (sqrt(2/pi) * (beta[5]^2 - 1) *
-       outer(sigma.t, pt) + xt * sd_xi * beta[5])^2 *
-         beta[5]^(2 * (sign(sqrt(2/pi)* (beta[5] - 1/beta[5]) +
-                       (xt * sd_xi)/outer(sigma.t, pt)) - 1)) *
-           2 * Delta(sqrt(2/pi) * (beta[5] - 1/beta[5]) +
-                     (xt * sd_xi)/outer(sigma.t, pt)) +
-           (xt * sd_xi * (sqrt(2/pi) * (beta[5]^2 - 1) * outer(sigma.t, pt) +
-                          xt * sd_xi * beta[5]) *
-            beta[5]^(2 * sign(sqrt(2/pi) * (beta[5] - 1/beta[5]) +
-                         (xt * sd_xi)/outer(sigma.t, pt)) - 1))/
-                           outer(sigma.t^3, pt^2) - 1/sigma.t
+    ## Piece wise Analytical derivative
+    dldsigma <- -1/sigma.t +
+      (outer(sigma.t^-1, pt^-1) * sd_xi * xt + mu_xi) *
+        (outer(sigma.t^-2, pt^-1) * sd_xi * xt) *
+          (beta[5]^-2 * Heaviside(z_xi) + beta[5]^2 * Heaviside(-z_xi))
 
     sig.vec <- 2 * sigma.t
     convFilter <- 1:(T - 2) * cumprod(c(1, rep(beta[2], T - 3)))
@@ -110,8 +92,7 @@ logd.mgarch <- function(xt, beta, pt, which){
     dsigmadbeta1 <- c(0, betaSum)
 
     ## beta[4] - The initial variance
-    dsigmadsigma <- c(sig.vec[1],
-                      2 * beta[4] * beta[2]^(1:(T - 1)))
+    dsigmadsigma <- 2 * beta[4] * beta[2]^(0:(T - 1))
     
     ## beta[5] - Skewness parameter
     dldxi <- ((2 - 4/pi) * (beta[5] - beta[5]^-3))/
@@ -148,21 +129,31 @@ logd.mgarch <- function(xt, beta, pt, which){
 logd.mgarch <- cmpfun(logd.mgarch)
 
 ## Test whether the parameters are valid
+## NOTES (Michael): Removed the stationarity restriction
 valid.mgarch <- function(x, beta, mix){
     beta[1] > 0 &&
     beta[2] >= 0 &&
     beta[3] >= 0 &&
     beta[4] > 0 &&
-    beta[5] > 0 &&
-    (beta[2] + beta[3]) < 1
+    beta[5] > 0 #&&
+#    (beta[2] + beta[3]) < 1
 }
 
 
 ## Function for initialising the parameters
+##
 ## NOTES (Michael): Sometimes the coefficients given by fGarch voilates
 ## the stationarity assumption so we scale the coefficients to satisfy
 ## the assumption
-## TODO (Michael): Write a catch function if the garchFit fails
+##
+## TODO (Michael): Write a catch function if the garchFit fails,
+## sometimes the GARCH can not be initialised when the inverse of the
+## hessian does not exists
+##
+## NOTES (Michael): Use the standard deviation of the data to initiate,
+## this avoids the problem of having initial value too different to the
+## data in which somehow causes differential in the derivatives
+
 initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
     if(is.null(beta)){
         gf <- garchFit(data = as.numeric(x), trace = FALSE,
@@ -170,7 +161,8 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
         cgf <- coef(gf)
         if((sum(cgf[2:3]) >= 1))
           cgf[2:3] = cgf[2:3]/sum(cgf[2:3]) - 1e-3
-        beta <- c(cgf[1], cgf[3], cgf[2], gf@sigma.t[1], 1)
+        ## beta <- c(cgf[1], cgf[3], cgf[2], gf@sigma.t[1], 1)
+        beta <- c(cgf[1], cgf[3], cgf[2], sd(x), 1)
         names(beta) <- c("omega", "beta1", "alpha1", "sigma0", "xi")
         mix <- disc(1, 1)
         list(beta = beta, mix = mix)
@@ -179,7 +171,7 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
 
 ## Function to determine the grid
 gridpoints.mgarch <- function(x, beta, grid){
-  seq(0.001, 20, length = grid)
+  seq(0.2, 20, length = grid)
 }
 
 ## The weights function, this is useful when the data is discrete and
@@ -188,7 +180,7 @@ weights.mgarch <- function(x) 1
 
 ## Function to restrict the space of the support points
 suppspace.mgarch <- function(x, beta, mix){
-  c(0.001, 20)
+  c(0.2, 20)
 }
 
 ## Function for converting different class of time series to mgarch
@@ -198,12 +190,11 @@ as.mgarch <- function(x){
   mgts <- as.numeric(data.matrix(x))
   class(mgts) <- "mgarch"
   mgts
-}
-  
+}  
 
 
 ## summary result of the solution
-summary.mgarch <- function(sol, digits = 5){
+summary.mgarch <- function(sol, digits = 4){
   cat(paste("Solution Standard Deviation: ",
               round(sqrt(sum(sol$mix$pr * sol$mix$pt^2)), 4), "\n", sep = ""))
   cat(paste("Persistence: ", round(sum(sol$beta[2:3]), 4), "\n", sep = ""))
@@ -283,6 +274,7 @@ cnmms <- function (x, init = NULL, maxit = 1000,
         ##                  algorithm just breaks out here before the
         ##                  last step of scaling so that the final
         ##                  solution is actually not scaled.
+        ## NOTES (Michael): The scaling restriction has been removed.
 
         ## Start of scaling
         sc <- sqrt(sum(mix$pr * mix$pt^2))
@@ -295,16 +287,16 @@ cnmms <- function (x, init = NULL, maxit = 1000,
                                       beta[4] * sc,
                                       beta[5])),
                            sc, (1/(beta[2] + beta[3]) - 1e-7))
-          print(paste("Scaled by :", new.sc, sep = ""))
-          cat(paste("Close to boundary?: ", !(new.sc == sc), "\n", sep = ""))
-          mix$pt <- mix$pt/new.sc
-          beta[c(1, 3)] <- beta[c(1, 3)] * new.sc^2
-          beta[4] <- beta[4] * new.sc          
+          print(paste("Scaled by :", sc, sep = ""))
+          cat(paste("Parameters violating the stationarity boundary?: ",
+                    !(new.sc == sc), "\n", sep = ""))
+          mix$pt <- mix$pt/sc
+          beta[c(1, 3)] <- beta[c(1, 3)] * sc^2
+          beta[4] <- beta[4] * sc          
         }
         print("Likelihood After Scale:")
         print.snpmle(verb, x, mix, beta, gradient)
-
-        print(beta)
+        beta.diff(x = x, beta = beta, pt = mix$pt)
         ## End of scaling
         
         if (r$ll >= ll1 - tol * abs(r$ll) && r$ll <= ll1 + tol * 
@@ -330,3 +322,5 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     attr(result, "class") <- "mgarch"
     result
 }
+
+
