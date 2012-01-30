@@ -60,6 +60,7 @@ summary(rii.mg)
 
 
 ## This is the S&P data which has very large gradient
+library(tseries)
 sp <- get.hist.quote("SPY", quote = "Open",
                      end = "2006-01-02",
                      start = "2002-12-30",
