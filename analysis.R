@@ -44,7 +44,7 @@ rii <- c(395, 399, 415, 419, 433, 442, 442, 442, 442, 442, 463, 470,
          580.91)
 
 ## Take the log return and model
-rii <- diff(log(chi))
+rii <- diff(log(rii))
 trii <- rii
 class(trii) <- "mgarch"
 rii.t0 <- garchFit(data = rii, cond.dist = "snorm", include.mean = FALSE)
