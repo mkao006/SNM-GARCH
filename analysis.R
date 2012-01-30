@@ -57,3 +57,19 @@ rii.t0@fit$llh
 rii.t1@fit$llh
 rii.t2@fit$llh
 summary(rii.mg)
+
+
+## This is the S&P data which has very large gradient
+sp <- get.hist.quote("SPY", quote = "Open",
+                     end = "2006-01-02",
+                     start = "2002-12-30",
+                     provider = "yahoo")
+
+
+tsp <- diff(log(as.numeric(sp)))[1:300]
+tmsp <- tsp
+class(tmsp) <- "mgarch"
+sp.t0 <- garchFit(data = tsp, cond.dist = "snorm", include.mean = FALSE)
+sp.t1 <- garchFit(data = tsp, cond.dist = "sged", include.mean = FALSE)
+sp.t2 <- garchFit(data = tsp, cond.dist = "sstd", include.mean = FALSE)
+(sp.mg <- cnmms(tmsp, plot = "gradient", grid = 1000, verb = 4))
