@@ -220,7 +220,7 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
 
 ## Function to determine the grid
 gridpoints.mgarch <- function(x, beta, grid){
-  seq(0.005, 20, length = grid)
+  seq(0.3, 20, length = grid)
 }
 
 ## The weights function, this is useful when the data is discrete and
@@ -229,7 +229,7 @@ weights.mgarch <- function(x) 1
 
 ## Function to restrict the space of the support points
 suppspace.mgarch <- function(x, beta, mix){
-  c(0.005, 20)
+  c(0.3, 20)
 }
 
 ## Function for converting different class of time series to mgarch
