@@ -80,12 +80,12 @@ dg.t2 <- garchFit(data = tdg, cond.dist = "sstd")
 (dg.mg <- cnmms(tmdg, plot = "gradient", grid = 1000, verb = 4, tol = 1e-15))
 
 ## NOTES (Michael):This shows that the algorithm has converged, despite
-##                 the fact that gradient is not zero it is sufficiently
-##                 close to zero as the log-likelihood does not change
-##                 with respect to any change to the beta
+##                 the fact that gradient for (beta.1) is not zero it is
+##                 sufficiently close to zero as the log-likelihood does
+##                 not change with respect to any change to the beta
 print.snpmle(4, tmdg, dg.mg$mix, dg.mg$beta, gradient)
-print.snpmle(4, tmdg, dg.mg$mix, dg.mg$beta + c(1e-12, rep(0, 4)), gradient)
-print.snpmle(4, tmdg, dg.mg$mix, dg.mg$beta - c(1e-12, rep(0, 4)), gradient)
+print.snpmle(4, tmdg, dg.mg$mix, dg.mg$beta + c(1e-10, rep(0, 4)), gradient)
+print.snpmle(4, tmdg, dg.mg$mix, dg.mg$beta - c(1e-10, rep(0, 4)), gradient)
 
 ## Plot the density
 plot.mgarch(tdg, dg.mg, myylim = c(0, 0.75))
