@@ -10,6 +10,8 @@ library(Rcpp)
 library(rbenchmark)
 library(abind)
 library(fGarch)
+## library(VGAM)
+
 
 ## Parameters:
 ## param[1] = omega
@@ -47,8 +49,8 @@ logd.mgarch <- function(xt, beta, pt, which){
   T <- length(xt)
   lpt <- length(pt)
   lb <- length(beta)
-  dl <- vector("list", length = 3)
-  names(dl) <- c("ld", "db", "dt")
+  dl <- vector("list", length = 4)
+  names(dl) <- c("ld", "db", "dt", "sigma.t")
 
   ## Calculate the conditional variance
   betaSum <- as.numeric(filter(xt[-T]^2, beta[2], "recursive"))
@@ -75,6 +77,7 @@ logd.mgarch <- function(xt, beta, pt, which){
   ## sigma.t2 <- sqrt(sigma2)
   ## dl$sigma2 <- sigma.t2
 
+  dl$sigma.t <- sigma.t
   ## Calculate the transformed moments of the skewed distribution
   sd_xi <- sqrt((1 - 2/pi) * (beta[5]^2 + beta[5]^-2) + (4/pi - 1))
   mu_xi <- sqrt(2/pi) * (beta[5] - beta[5]^-1)
@@ -135,8 +138,6 @@ logd.mgarch <- function(xt, beta, pt, which){
     ## beta[4] - The initial variance
     dsigmadsigma <-
       2 * beta[4] * beta[2]^(0:(T - 1))
-      ## c(2 * beta[4], rep(0, (T - 1)))
-      
     
     ## beta[5] - Skewness parameter
     dldxi <- ((2 - 4/pi) * (beta[5] - beta[5]^-3))/
@@ -176,13 +177,9 @@ logd.mgarch <- cmpfun(logd.mgarch)
 ## NOTES (Michael): Removed the stationarity restriction
 valid.mgarch <- function(x, beta, mix){
     beta[1] > 0 &&
-    beta[1] < max(x)^2 &&
     beta[2] >= 0 &&
-    beta[2] < 1 &&
     beta[3] >= 0 &&
-    beta[3] < 1 &&
     beta[4] > 0 &&
-    beta[4] < max(x) &&
     beta[5] > 0
 }
 
@@ -220,7 +217,7 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
 
 ## Function to determine the grid
 gridpoints.mgarch <- function(x, beta, grid){
-  seq(0.3, 20, length = grid)
+  seq(0.1, 20, length = grid)
 }
 
 ## The weights function, this is useful when the data is discrete and
@@ -229,7 +226,7 @@ weights.mgarch <- function(x) 1
 
 ## Function to restrict the space of the support points
 suppspace.mgarch <- function(x, beta, mix){
-  c(0.3, 20)
+  c(0.1, 20)
 }
 
 ## Function for converting different class of time series to mgarch
@@ -259,12 +256,23 @@ coef.mgarch <- function(sol){
   round(sol$beta, 7)
 }
 
-## TODO (Michael): This takes too long and inflexible, take out the
-##                 fGarch component, and just write a pure plotting
-##                 function.
+## Plot the fit, also return the Komogorov-smirnov statistic
+## plot.mgarch <- function(xt, sol){
+##   res <- xt/sol$sigma.t
+##   res.ecdf <- ecdf(res)
+##   plot(res.ecdf,
+##        main = "Empirical CDF of the innovation\n with fitted mixture",
+##        xlim = c(-6, 6))
+##   x <- seq(-6, 6, length = 300)
+##   lines(x, pmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]),
+##         col = "red", lwd = 1.5)
+##   ks <- max(1:length(xt)/length(xt) -
+##             pmsnorm(xt, varmix = sol$mix, xi = sol$beta["xi"]))
+## }
+## plot(as.mgarch(sim1$x), sim1.mg)  
 
-## Plot the fit
 
+## This is old and probably not ideal (Takes too long to run)
 plot.mgarch <- function(xt, sol, myylim = c(0, 0.75), bin = 10){
   ## Calculate the fit by different distribution
   norm.fit <- garchFit(data = xt, cond.dist = "snorm",
@@ -316,7 +324,7 @@ plot.mgarch <- function(xt, sol, myylim = c(0, 0.75), bin = 10){
        breaks = length(xt)/bin, ylim = myylim, xlim = c(-4, 4), main = "",
      xlab = "Error Distribution")
   lines(density(xt/mix.sd), col = "red", lwd = 3)
-  curve(dmsnorm(x, sd = 1, varmix = sol$mix, xi = sol$beta["xi"]),
+  curve(dmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]),
         add = TRUE, col = "blue", lwd = 3)
   box()
   for(i in 1:length(sol$mix$pt)){
@@ -336,25 +344,28 @@ plot.mgarch <- function(xt, sol, myylim = c(0, 0.75), bin = 10){
 ##       col = "green")
 
 
+dmsnorm <- function(x, mean = 0, varmix = disc(1, 1), xi = 1){
+  ## Function for calculating the PDF of the scaled skewed normal
+  ## mixture distribution.
+  ##
+  ## Args:
+  ##  x:      The observations
+  ##  mean:   Mean of the mixture (can only be a scalar)
+  ##  varmix: The variance mixture of the distribution
+  ##  xi:     The skewness of the mixture distribution
+  ##
+  ## Returns:
+  ##  The density of the scale skewed normal mixture distribution
+  ##
 
-dmsnorm <- function(x, mean = 0, sd = 1, varmix = disc(1, 1), xi){
+  ## Initial the dimension
   n = length(x)
   n.mix = length(varmix$pt)
-
-  ## Account for different cases of sigma
-  ## (1) If the length of sd == 1 then it's constant variance
-  ## (2) If the length of sd == n then it's conditional variance
-  ## Otherwise there is no interpretation/meaning using the recyclying rule
-  if(length(sd) == 1){
-    sd <- rep(sd, n)
-  }else if(length(sd) != n){
-    stop("length of the standard deviation is not correct")
-  }
 
   ## Calculate the transformed moments
   sd_xi <- sqrt((1 - 2/pi) * (xi^2 + xi^-2) + (4/pi - 1))
   mu_xi <- sqrt(2/pi) * (xi - xi^-1)
-  Sigma <- outer(sd^-1, varmix$pt^-1)
+  Sigma <- matrix(rep(varmix$pt^-1, each = n), nc = n.mix, nr = n)
   z_xi <- Sigma * sd_xi * x + mu_xi
 
   ## Calculate the log-density then the weighted density
@@ -363,8 +374,49 @@ dmsnorm <- function(x, mean = 0, sd = 1, varmix = disc(1, 1), xi){
         0.5 * ((Sigma * sd_xi * x + mu_xi) *
                (xi^-1 * Heaviside(z_xi) + xi * Heaviside(-z_xi)))^2
   exp(ll) %*% varmix$pr
-  ## ((2 * Sigma)/(xi + 1/xi) * dnorm(z_xi)) %*% varmix$pr
 }
+
+## curve(dmsnorm(x, mean = 0, sd = 1, dg.mg$mix, xi = dg.mg$beta[5]), -3, 3,
+##       ylim = c(0, 0.5), col = "blue")
+## curve(dmsnorm(x, mean = 0, sd = 1, xi = 1), lty = 2, add = TRUE)
+## curve(dnorm(x), add = TRUE, col = "red", lty = 2)
+## curve(dmsnorm(x, mean = 0, sd = 1, xi = 2), lty = 3, add = TRUE,
+##       col = "orange", lwd = 2)
+## curve(dsnorm(x, xi = 2), lty = 3, col = "purple", add = TRUE)
+## dmsnorm(1:5, mean = 0, sd = 1:5, dg.mg$mix, xi = dg.mg$beta[5])
+
+
+
+pmsnorm <- function(x, mean = 0, varmix = disc(1, 1), xi = 1){
+  ## Function for calculating the CDF of the mixture skewed normal
+  ## distribution.
+  ##
+  ## Args:
+  ##  x:      The observations
+  ##  mean:   Mean of the mixture (can only be a scalar)
+  ##  sd:     The standard deviation over time (only for time series)
+  ##          otherwise treated as constant 1.
+  ##  varmix: The mixture of the distribution
+  ##  xi:     The skewness of the mixture distribution
+  ##
+  ## Returns:
+  ##  The CDF of the scale mixture skewed normal distribution.
+  ##
+  
+  n = length(x)
+  n.mix = length(varmix$pt)
+
+  ## Calculate the transformed moments
+  sd_xi <- sqrt((1 - 2/pi) * (xi^2 + xi^-2) + (4/pi - 1))
+  mu_xi <- sqrt(2/pi) * (xi - xi^-1)
+  Sigma <- matrix(rep(varmix$pt^-1, each = n), nc = n.mix, nr = n)
+  z_xi <- Sigma * sd_xi * x + mu_xi
+  
+  ## Calculate the CDF
+  lik <- (sd_xi)/((xi + 1/xi) * Sigma) * (1 + erf(z_xi/sqrt(2) * Sigma^2))
+  lik %*% varmix$pr
+}
+
 
 ## NOTES (Michael): Don't like the name of this function, will change it
 ##                  later.
@@ -380,14 +432,6 @@ cond.sd <- function(x, beta){
   sigma.t
 }
 
-## curve(dmsnorm(x, mean = 0, sd = 1, dg.mg$mix, xi = dg.mg$beta[5]), -3, 3,
-##       ylim = c(0, 0.5), col = "blue")
-## curve(dmsnorm(x, mean = 0, sd = 1, xi = 1), lty = 2, add = TRUE)
-## curve(dnorm(x), add = TRUE, col = "red", lty = 2)
-## curve(dmsnorm(x, mean = 0, sd = 1, xi = 2), lty = 3, add = TRUE,
-##       col = "orange", lwd = 2)
-## curve(dsnorm(x, xi = 2), lty = 3, col = "purple", add = TRUE)
-## dmsnorm(1:5, mean = 0, sd = 1:5, dg.mg$mix, xi = dg.mg$beta[5])
 
 ######################################################################
 ## Modify the cnmms function for scaling and also adding the class to
@@ -495,9 +539,135 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     }
     else grad = r$grad
     grad[1:m] = grad[1:m] - sum(rep(w, len = length(x)))
+    sigma.t <- logd.mgarch(x, beta, mix$pt, which = c(0, 0, 0))$sigma.t
     result <- list(mix = mix, beta = beta, num.iterations = i,
                    ll = attr(mix,"ll")[1], grad = grad,
-                   convergence = convergence)
+                   convergence = convergence,
+                   sigma.t = sigma.t)
     attr(result, "class") <- "mgarch"
     result
 }
+
+
+
+## NOTES (Michael):The current number of iteration in line search is
+## insufficient in our case, thus I have increased the number of
+## iterations so the algorithm does not break pre-maturely
+lsch <- function (mix1, beta1, mix2, beta2, x, maxit = 100,
+                  which = c(1, 1, 1), brkt = FALSE){
+    k = length(mix1$pt)
+    convergence = 1
+    dl1 = dll.snpmle(x, mix1, beta1, which = c(1, which))
+    lla = ll1 = dl1$ll
+    names.grad = c(if (which[1]) paste("pr", 1:k, sep = ".") else NULL, 
+        if (which[2]) paste("pt", 1:k, sep = ".") else NULL, 
+        if (which[3]) paste("beta", 1:length(beta1), sep = ".") else NULL)
+    grad1 = c(if (which[1]) dl1$dp else NULL, if (which[2]) dl1$dt else NULL, 
+        if (which[3]) dl1$db else NULL)
+    names(grad1) = names.grad
+    d1 = c(if (which[1]) mix2$pr - mix1$pr else NULL, if (which[2]) mix2$pt - 
+        mix1$pt else NULL, if (which[3]) beta2 - beta1 else NULL)
+    d1.norm = sqrt(sum(d1 * d1))
+    s = d1/d1.norm
+    g1d1 = sum(grad1 * d1)
+    dla = g1s = g1d1/d1.norm
+    if (d1.norm == 0 || g1s <= 0) {
+        return(list(mix = mix1, beta = beta1, grad = grad1, ll = ll1, 
+            convergence = 3))
+    }
+    a = 0
+    b = 1
+    if (which[1] && any(mix2$pr == 0)) 
+        brkt = FALSE
+    for (i in 1:maxit) {
+        for (j in 1:1000) {
+            m = disc((1 - b) * mix1$pt + b * mix2$pt, (1 - b) * 
+                mix1$pr + b * mix2$pr)
+            beta = if (is.null(beta1)) 
+                NULL
+            else (1 - b) * beta1 + b * beta2
+            if (valid.snpmle(x, beta, m)) 
+                break
+            brkt = FALSE
+            b = 0.5 * a + 0.5 * b
+        }
+        if (j == 1000) 
+            warning("Can not produce valid interior point in lsch()")
+        dl = dll.snpmle(x, m, beta, which = c(1, which))
+        ll = dl$ll
+        grad = c(if (which[1]) dl$dp else NULL, if (which[2]) dl$dt else NULL, 
+            if (which[3]) dl$db else NULL)
+        gs = sum(grad * s)
+        if (brkt && gs > g1s * 0.5 && ll >= ll1 + g1d1 * b * 
+            0.33) {
+            a = b
+            b = 2 * b
+            lla = ll
+            dla = gs
+        }
+        else break
+    }
+    if (i == maxit) 
+        brkt = FALSE
+    alpha = b
+    llb = ll
+    dlb = gs
+    for (i in 1:maxit) {
+        g1d = g1d1 * alpha
+        if (ll >= ll1 - 1e-15 * abs(ll1) && g1d <= 1e-15 * abs(ll)) {
+            convergence = 2
+            break
+        }
+        if (brkt) {
+            if (ll >= ll1 + g1d * 0.33 && abs(gs) <= g1s * 0.5) {
+                convergence = 0
+                break
+            }
+            if (ll >= ll1 + g1d * 0.33 && gs > g1s * 0.5) {
+                a = alpha
+                lla = ll
+                dla = gs
+            }
+            else {
+                b = alpha
+                llb = ll
+                dlb = gs
+            }
+        }
+        else {
+            if (ll >= ll1 + g1d * 0.33) {
+                convergence = 0
+                break
+            }
+            else {
+                b = alpha
+                llb = ll
+                dlb = gs
+            }
+        }
+        alpha = (a + b) * 0.5
+        m = disc((1 - alpha) * mix1$pt + alpha * mix2$pt, (1 - 
+            alpha) * mix1$pr + alpha * mix2$pr)
+        beta = if (is.null(beta1)) 
+            NULL
+        else (1 - alpha) * beta1 + alpha * beta2
+        dl = dll.snpmle(x, m, beta, which = c(1, which))
+        ll = dl$ll
+        grad = c(if (which[1]) dl$dp else NULL, if (which[2]) dl$dt else NULL, 
+            if (which[3]) dl$db else NULL)
+        gs = sum(grad * s)
+    }
+    names(grad) = names.grad
+    beta = if (is.null(beta1)) 
+        NULL
+    else (1 - alpha) * beta1 + alpha * beta2
+    list(mix = disc((1 - alpha) * mix1$pt + alpha * mix2$pt, 
+        (1 - alpha) * mix1$pr + alpha * mix2$pr), beta = beta, 
+        grad = grad, ll = ll, convergence = convergence, num.iterations = i)
+}
+
+
+## NOTES (Michael): Now the only error left is the following:
+##
+## Error in if (brkt && gs > g1s * 0.5 && ll >= ll1 + g1d1 * b * 0.33) {
+## : missing value where TRUE/FALSE needed
