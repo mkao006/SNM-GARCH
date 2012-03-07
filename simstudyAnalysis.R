@@ -26,30 +26,45 @@ source("mgarchSim.R")
 ##                  the garchFit() will surely beat our algorithm.
 
 ## Vanilla case
-## For the case of seed = 587, our model beats the garchFit in all cases
-sim0 <- mgarchSim(n = 300, beta = c(1e-3, 0.8, 0.1, 0.15, 1.5),
-                  mix = disc(1, 1))
-(sim0.mg <- cnmms(as.mgarch(sim0$x), plot = "gradient", grid = 1000,
-                 verb = 4, tol = 1e-10))
-sim0.fit <- garchFit(data = sim0$x, include.mean = FALSE, trace = FALSE,
-                     cond.dist = "snorm")
-coef(sim0.mg)
-coef(sim0.fit)
-
 
 ## First simulation.
 ## NOTES (Michael): Both algorithm does not recover the original beta's
 ##                  well enough, the mix recovered is not satisfactory
 ##                  either.
-## grid = 0.1
-sim1 <- mgarchSim(n = 300, beta = c(1e-3, 0.8, 0.1, 0.15, 1),
-                  mix = disc(c(0.8, 2.059126), c(0.9, 0.1)))
-(sim1.mg <- cnmms(as.mgarch(sim1$x), plot = "gradient", grid = 1000,
-                 verb = 4, tol = 1e-10))
+
+
+sim0 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.2, 1),
+                  mix = disc(c(1, 1)), seed = 1)
+sim0.mg <- cnmms(as.mgarch(sim0$x), plot = "gradient", grid = 1000,
+                 verb = 4, tol = 1e-5)
+sim0.fit <- garchFit(data = sim0$x, include.mean = FALSE, trace = FALSE)
+
+########################################################################
+## Just up to here
+########################################################################
+
+
+hist(sim0$x/sim0.mg$sigma.t, breaks = 50, freq = FALSE)
+curve(dnorm(x), add = TRUE, col = "red")
+curve(dmsnorm(x, varmix = sim0.mg$mix, xi = sim0.mg$beta["xi"]),
+      add = TRUE, col = "blue")
+plot.mgarch(sim0$x, sol = sim0.mg)
+
+
+sim1 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.2, 1),
+                  mix = disc(c(0.8, 2.059126), c(0.9, 0.1)), seed = 1)
+sim1.mg <- cnmms(as.mgarch(sim1$x), plot = "gradient", grid = 1000,
+                 verb = 4, tol = 1e-5)
 sim1.fit <- garchFit(data = sim1$x, include.mean = FALSE, trace = FALSE)
 
-## Second simulation
+hist(sim1$x/sim1.mg$sigma.t, breaks = 50, freq = FALSE)
+curve(dnorm(x), add = TRUE, col = "red")
+curve(dmsnorm(x, varmix = sim1.mg$mix, xi = sim1.mg$beta["xi"]),
+      add = TRUE, col = "blue")
 
+
+
+## Second simulation
 ## NOTES (Michael): We increased the length of the time series to see
 ##                  whether an improvement can be observed.
 sim2 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.15, 1),
@@ -58,11 +73,9 @@ sim2 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.15, 1),
                  verb = 4, tol = 1e-10))
 sim2.fit <- garchFit(data = sim2$x, include.mean = FALSE, trace = FALSE)
 
-## test <- garchSim(spec = garchSpec(cond.dist = "snorm",
-##                    model = list(alpha = 0.7, beta = 0.1, skew = 1.2)),
-##                  n = 2000)
-## test.fit <- garchFit(data = test, cond.dist = "snorm",
-##                      include.mean = FALSE, trace = FALSE)
+
+test <- garchSim(n = 2000)
+test.fit <- garchFit(data = test, include.mean = FALSE, trace = FALSE)
 ## test.mg <- cnmms(as.mgarch(test), plot = "gradient",
 ##                  grid = 1000, verb = 4, tol = 1e-10)
 
@@ -112,6 +125,12 @@ sp.t2 <- garchFit(data = tsp, cond.dist = "sstd", include.mean = FALSE)
 (sp.mg <- cnmms(tmsp, plot = "gradient", grid = 1000, verb = 4))
 
 plot.mgarch(tsp, sp.mg, myylim = c(0, 0.75))
+
+
+print.snpmle(4, tmsp, sp.mg$mix, sp.mg$beta, gradient)
+print.snpmle(4, tmsp, sp.mg$mix, sp.mg$beta + c(1e-10, rep(0, 4)), gradient)
+print.snpmle(4, tmsp, sp.mg$mix, sp.mg$beta - c(1e-10, rep(0, 4)), gradient)
+
 
 ######################################################################
 ## NYSE
