@@ -10,7 +10,6 @@ library(Rcpp)
 library(rbenchmark)
 library(abind)
 library(fGarch)
-## library(VGAM)
 
 
 ## Parameters:
@@ -24,16 +23,6 @@ library(fGarch)
 ## TODO (Michael): Handle the class in a better way. Don't like coercing
 ##                 to numeric.
 ## TODO (Michael): Improve the efficiency of this code (e.g. remove outer)
-## TODO (Michael): Still not sure why a few analytical derivatives are
-##                 significantly different to the numerical gradient for
-##                 the derivative of beta[1] and second order for theta.
-
-## NOTES (Michael): I think the biggest problem is actually numerical
-##                  stability of the logd function
-## NOTES (Michael): It appears that the analytical gradient are correct
-##                  since if we reduce the size of increments, the
-##                  difference between the analytical gradient and the
-##                  numerical gradients becomes zero.
 
 ## NOTES (Michael): The use of heaviside function is so that there are
 ##                  not undefined points as would have happen if we used
@@ -60,24 +49,8 @@ logd.mgarch <- function(xt, beta, pt, which){
                (1 - beta[2]) +
                cumprod(rep.int(beta[2], T - 1)) * beta[4]^2 +
                beta[3] * betaSum))
-  ##     sigma.t2 <-
-  ##       c(beta[4]^2,
-  ##              beta[1] * ((1 - cumprod(rep.int(beta[2], T - 1))))/
-  ##              (1 - beta[2]) +
-  ##              cumprod(rep.int(beta[2], T - 1)) * beta[4]^2 +
-  ##              beta[3] * betaSum)
-  ## print(head(sigma.t2, 10))
-  ## dl$sigma1 <- sigma.t
+##   dl$sigma.t <- sigma.t
   
-  ## sigma2 <- double(T)
-  ## sigma2[1] <- beta[4]^2
-  ## for(i in 2:T){
-  ##   sigma2[i] <- beta[1] + beta[2] * sigma2[i - 1] + beta[3] * xt[i - 1]^2
-  ## }
-  ## sigma.t2 <- sqrt(sigma2)
-  ## dl$sigma2 <- sigma.t2
-
-  dl$sigma.t <- sigma.t
   ## Calculate the transformed moments of the skewed distribution
   sd_xi <- sqrt((1 - 2/pi) * (beta[5]^2 + beta[5]^-2) + (4/pi - 1))
   mu_xi <- sqrt(2/pi) * (beta[5] - beta[5]^-1)
@@ -101,20 +74,6 @@ logd.mgarch <- function(xt, beta, pt, which){
       (outer(sigma.t^-1, pt^-1) * sd_xi * xt + mu_xi) *
         (outer(sigma.t^-2, pt^-1) * sd_xi * xt) *
           (beta[5]^-2 * Heaviside(z_xi) + beta[5]^2 * Heaviside(-z_xi))
-
-    ## NOTES (Michael): Check again by solving with Heaviside
-    ##                  function. Unfortunately this solution is wrong
-    ##                  because the sign function may be a reasonable
-    ##                  representation of the Heaviside function but the
-    ##                  property is quite different when taking into
-    ##                  account of the skewness parameter
-    ## dldsigma <-
-    ##   -1/sigma.t -
-    ##     (beta[5]^(sign(-z_xi)) * (z_xi)) *
-    ##       (beta[5]^(-(outer(sigma.t^-2, pt^-1) * sd_xi * xt) * Delta(-z_xi)) *
-    ##        (z_xi) +
-    ##      beta[5]^(sign(-z_xi)) *
-    ##       (-(outer(sigma.t^-2, pt^-1) * sd_xi * xt))
     
     sig.vec <- 2 * sigma.t
     convFilter <- 1:(T - 2) * cumprod(c(1, rep(beta[2], T - 3)))
@@ -174,14 +133,20 @@ logd.mgarch <- function(xt, beta, pt, which){
 logd.mgarch <- cmpfun(logd.mgarch)
 
 ## Test whether the parameters are valid
-## NOTES (Michael): Removed the stationarity restriction
-valid.mgarch <- function(x, beta, mix){
+valid.mgarch <- function(x, beta){
     beta[1] > 0 &&
     beta[2] >= 0 &&
     beta[3] >= 0 &&
     beta[4] > 0 &&
-    beta[5] > 0
+    beta[5] > 0 
+##    mix$pt >= 0.1
 }
+
+## valid.snpmle <- function(x, beta, mix){
+##   bs = suppspace(x)
+##   valid.mgarch(x, beta, mix) && all(mix$pr >= 0, mix$pt >= bs[1], mix$pt <= 
+##         bs[2])
+## }
 
 
 ## Function for initialising the parameters
@@ -202,11 +167,15 @@ valid.mgarch <- function(x, beta, mix){
 
 initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
     if(is.null(beta)){
-        gf <- garchFit(data = as.numeric(x), trace = FALSE,
-                             include.mean = FALSE)
-        cgf <- coef(gf)
-        if((sum(cgf[2:3]) >= 1))
-          cgf[2:3] = cgf[2:3]/sum(cgf[2:3]) - 1e-3
+        gf <- try(garchFit(data = as.numeric(x), trace = FALSE,
+                           include.mean = FALSE))
+        if(!(inherits(gf, "try-error"))){
+          cgf <- coef(gf)
+        } else {
+          cgf <- c(1e-6, 0.1, 0.8, sd(x), 1)
+        }
+        ## if((sum(cgf[2:3]) >= 1))
+        ##   cgf[2:3] = cgf[2:3]/sum(cgf[2:3]) - 1e-3
         ## beta <- c(cgf[1], cgf[3], cgf[2], gf@sigma.t[1], 1)
         beta <- c(cgf[1], cgf[3], cgf[2], gf@sigma.t[1], 1)
         names(beta) <- c("omega", "beta1", "alpha1", "sigma0", "xi")
@@ -256,90 +225,223 @@ coef.mgarch <- function(sol){
   round(sol$beta, 7)
 }
 
+## Error function taken from the VGAM package
+erf <- function(x) 2 * pnorm(x * sqrt(2)) - 1
+
 ## Plot the fit, also return the Komogorov-smirnov statistic
-## plot.mgarch <- function(xt, sol){
-##   res <- xt/sol$sigma.t
-##   res.ecdf <- ecdf(res)
-##   plot(res.ecdf,
-##        main = "Empirical CDF of the innovation\n with fitted mixture",
-##        xlim = c(-6, 6))
-##   x <- seq(-6, 6, length = 300)
-##   lines(x, pmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]),
-##         col = "red", lwd = 1.5)
-##   ks <- max(1:length(xt)/length(xt) -
-##             pmsnorm(xt, varmix = sol$mix, xi = sol$beta["xi"]))
-## }
-## plot(as.mgarch(sim1$x), sim1.mg)  
-
-
-## This is old and probably not ideal (Takes too long to run)
-plot.mgarch <- function(xt, sol, myylim = c(0, 0.75), bin = 10){
-  ## Calculate the fit by different distribution
-  norm.fit <- garchFit(data = xt, cond.dist = "snorm",
-                       include.mean = FALSE, trace = FALSE)
-  ged.fit <- garchFit(data = xt, cond.dist = "sged",
-                      include.mean = FALSE, trace = FALSE)
-  t.fit <- garchFit(data = xt, cond.dist = "sstd",
-                    include.mean = FALSE, trace = FALSE)
-
-  par(mfrow = c(2, 2), mar = c(2.1, 4.1, 4.1, 1.1))
-  ## Plot the standard normal fit
-  hist(xt/norm.fit@sigma.t, freq = FALSE,
-       breaks = length(xt)/bin, xlim = c(-4, 4), ylim = myylim,
-       main = "Standard Normal")
-  curve(dsnorm(x, 0, 1, xi = coef(norm.fit)["skew"]),
-        add = TRUE, col = "blue", lwd = 3)
-  lines(density(xt/norm.fit@sigma.t), col = "red", lwd = 3)
-  legend("topleft", legend = c("Density", "Fitted"),
-       col = c("red", "blue"), bty = "n", lty = 1, lwd = 3)
-  box()
-
-  ## Plot the t-distribution fit
-  par(mar = c(2.1, 3.1, 4.1, 2.1))
-  hist(xt/t.fit@sigma.t, freq = FALSE,
-       breaks = length(xt)/bin, xlim = c(-4, 4),
-       ylim = c(0, 0.6),
-       main = paste("t (", round(coef(t.fit)[5], 2), ")", sep = ""))
-  curve(dsstd(x, 0, 1, nu = coef(t.fit)["shape"], xi = coef(t.fit)["skew"]),
-        add = TRUE, col = "blue", lwd = 3)
-  lines(density(xt/t.fit@sigma.t), col = "red", lwd = 3)
-  box()
-
-  ## Plot the ged fit
-  par(mar = c(5.1, 4.1, 1.1, 1.1))
-  hist(xt/ged.fit@sigma.t, freq = FALSE,
-       breaks = length(xt)/bin, xlim = c(-4, 4),
-       ylim = myylim,
-       main = paste("Generalised Error Distribution (",
-         round(coef(ged.fit)["shape"], 2), ")", sep = ""),
-       ylab = "", xlab = "")
-  curve(dsged(x, 0, 1, nu = coef(ged.fit)["shape"], xi = coef(ged.fit)["skew"]),
-        add = TRUE, col = "blue", lwd = 3)
-  lines(density(xt/ged.fit@sigma.t), col = "red", lwd = 3)
-  box()
-
-  ## Plot the mixture fit
-  mix.sd <- cond.sd(xt, sol$beta)
-  hist(xt/mix.sd, freq = FALSE,
-       breaks = length(xt)/bin, ylim = myylim, xlim = c(-4, 4), main = "",
-     xlab = "Error Distribution")
-  lines(density(xt/mix.sd), col = "red", lwd = 3)
-  curve(dmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]),
-        add = TRUE, col = "blue", lwd = 3)
-  box()
-  for(i in 1:length(sol$mix$pt)){
-    curve(sol$mix$pr[i] * dsnorm(x, sd = sol$mix$pt[i], xi = sol$beta["xi"]),
-          add = TRUE, col = "light blue", lwd = 2)
+plot.mgarch <- function(xt, sol, plot = TRUE){
+  T <- length(xt)
+  betaSum <- as.numeric(filter(xt[-T]^2, sol$beta[2], "recursive"))
+  sigma.t <-
+    sqrt(c(sol$beta[4],
+           sol$beta[1] * ((1 - cumprod(rep.int(sol$beta[2], T - 1))))/
+           (1 - sol$beta[2]) +
+           cumprod(rep.int(sol$beta[2], T - 1)) * sol$beta[4]^2 +
+           sol$beta[3] * betaSum))
+  res <- sort(as.numeric(xt/sigma.t))
+  res.ecdf <- ecdf(res)
+  if(plot){
+    plot(res.ecdf,
+         main = "Empirical CDF of the innovation\n with fitted mixture",
+         xlim = c(-6, 6), lwd = 2)
+    curve(pmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]), add = TRUE,
+          col = "red", lwd = 1.5)
+    curve(pnorm(x), add = TRUE, col = "blue")
   }
+    ks <- 1:length(res)/length(res) -
+      pmsnorm(res, varmix = sol$mix, xi = sol$beta["xi"])
+  list(res = res, ks = ks)
 }
 
+
+disStudy <- function(n.samp = 100, n.iter = 50,
+                     param = list(omega = 1e-6, alpha = 0.15, beta = 0.75,
+                       skew = 1),
+                     cond.dist = "snorm", mix = disc(c(1, 1)), plot = FALSE){
+  ## Initialisation
+  n <- n.samp
+  iter <- n.iter
+  norm.res <- matrix(0, nc = iter, nr = n)
+  norm.ks <- matrix(0, nc = iter, nr = n)
+  t.res <- matrix(0, nc = iter, nr = n)
+  t.ks <- matrix(0, nc = iter, nr = n)
+  ged.res <- matrix(0, nc = iter, nr = n)
+  ged.ks <- matrix(0, nc = iter, nr = n)
+  mnorm.res <- matrix(0, nc = iter, nr = n)
+  mnorm.ks <- matrix(0, nc = iter, nr = n)
+  for(i in 1:iter){
+
+    cat("\t\t\t--------------\n")
+    cat(paste("\t\t\tSimulation: ", i, "\n", sep = ""))
+    cat("\t\t\t--------------\n")
+    
+    if(!(cond.dist %in% c("msnorm", "stable"))){
+      myspec <- garchSpec(model = param, cond.dist = cond.dist, rseed = i)
+      n.sim <- garchSim(spec = myspec, n = n)
+    } else {
+      msnorm.beta <- c(param$omega, param$beta, param$alpha, 0.01, param$skew)
+      n.sim <- mgarchSim(n = n, beta = msnorm.beta, mix = mix, seed = i,
+                         cond.dist = cond.dist)$x
+    }
+
+    norm.fit <- try(garchFit(data = n.sim, trace = FALSE, cond.dist = "snorm",
+                           include.mean = FALSE))
+    if(inherits(norm.fit, "try-error")){
+      norm.res[, i] <- rep(NA, n)
+      norm.ks[, i] <- rep(NA, n)
+    } else {
+      norm.res[, i] <- sort(as.numeric(n.sim/norm.fit@sigma.t))
+      norm.ks[, i] <- abs(1:n/n - psnorm(norm.res[, i],
+                                         xi = coef(norm.fit)["skew"]))
+    }
+
+    t.fit <- try(garchFit(data = n.sim, trace = FALSE, cond.dist = "sstd",
+                          include.mean = FALSE))
+    if(inherits(t.fit, "try-error")){
+      t.res[, i] <- rep(NA, n)
+      t.ks[, i] <- rep(NA, n)
+    } else {
+      t.res[, i] <- sort(as.numeric(n.sim/t.fit@sigma.t))
+      t.ks[, i] <- abs(1:n/n - psstd(t.res[, i], xi = coef(t.fit)["skew"],
+                                     nu = coef(t.fit)["shape"]))
+    }
+
+    ged.fit <- try(garchFit(data = n.sim, trace = FALSE, cond.dist = "sged",
+                            include.mean = FALSE))
+    if(inherits(ged.fit, "try-error")){
+      ged.res[, i] <- rep(NA, n)
+      ged.ks[, i] <- rep(NA, n)
+    } else {
+      ged.res[, i] <- sort(as.numeric(n.sim/ged.fit@sigma.t))
+      ged.ks[, i] <- abs(1:n/n - psged(ged.res[, i], xi = coef(ged.fit)["skew"],
+                                       nu = coef(ged.fit)["shape"]))
+    }
+    mnorm.fit <- try(cnmms(as.mgarch(n.sim), plot = "null", grid = 1000,
+                           verb = 0, tol = 1e-5))
+    if(inherits(mnorm.fit, "try-error")){
+      mnorm.res[, i] <- rep(NA, n)
+      mnorm.ks[, i] <- rep(NA, n)
+    } else {
+      tmp <- plot(xt = as.mgarch(n.sim), sol = mnorm.fit, plot = plot)
+      mnorm.res[, i] <- tmp$res
+      mnorm.ks[, i] <- abs(tmp$ks)
+    }
+  }
+
+  plot.new()
+  plot.window(xlim = c(1, n),
+              ylim = c(0, max(cbind(norm.ks, t.ks, ged.ks, mnorm.ks),
+                na.rm = TRUE)))
+  for(i in 1:iter){
+    lines(norm.ks[, i])
+    lines(t.ks[, i], col = "green")
+    lines(ged.ks[, i], col = "red")
+    lines(mnorm.ks[, i], col = "orange")
+  }
+  legend("topleft", col = c("black", "green", "red", "orange"), lty = 1,
+         lwd = 3, legend = c("Normal", "t", "ged", "mnorm"), bty = "n")
+  text(n * 0.8,
+       c(max(cbind(norm.ks, t.ks, ged.ks, mnorm.ks), na.rm = TRUE) *
+         rev(seq(8, 9.5, by = 0.5)/10)),
+       labels = c("norm", "t", "ged", "mnorm"))
+  text(n,
+       c(max(cbind(norm.ks, t.ks, ged.ks, mnorm.ks), na.rm = TRUE) *
+         rev(seq(8, 10, by = 0.5)/10)),
+       labels = c("max",
+         round(c(max(norm.ks, na.rm = TRUE), max(t.ks, na.rm = TRUE),
+               max(ged.ks, na.rm = TRUE), max(mnorm.ks, na.rm = TRUE)), 8)))
+  text(n * 0.9,
+       c(max(cbind(norm.ks, t.ks, ged.ks, mnorm.ks), na.rm = TRUE) *
+         rev(seq(8, 10, by = 0.5)/10)),
+       labels = c("mean",
+         round(c(mean(norm.ks, na.rm = TRUE), mean(t.ks, na.rm = TRUE),
+                 mean(ged.ks, na.rm = TRUE), mean(mnorm.ks, na.rm = TRUE)), 8)))
+  axis(1)
+  axis(2)
+  box()
+  lines(rowMeans(norm.ks, na.rm = TRUE), lwd = 5)
+  lines(rowMeans(t.ks, na.rm = TRUE), col = "green", lwd = 5)
+  lines(rowMeans(ged.ks, na.rm = TRUE), col = "red", lwd = 5)
+  lines(rowMeans(mnorm.ks, na.rm = TRUE), col = "orange", lwd = 5)
+  print(sum(colSums(norm.res, na.rm = TRUE) == 0))
+  print(sum(colSums(t.res, na.rm = TRUE) == 0))
+  print(sum(colSums(ged.res, na.rm = TRUE) == 0))
+  print(sum(colSums(mnorm.res, na.rm = TRUE) == 0))
+  list(norm.res, norm.ks, t.res, t.ks, ged.res, ged.ks, mnorm.res, mnorm.ks)
+}
+
+
+prConstruct <- function(pr, pt) sqrt((1 - pt^2 * pr)/(1 - pr))
+
+
+## ## This is old and probably not ideal (Takes too long to run)
+## plot.mgarch <- function(xt, sol, myylim = c(0, 0.75), bin = 10){
+##   ## Calculate the fit by different distribution
+##   norm.fit <- garchFit(data = xt, cond.dist = "snorm",
+##                        include.mean = FALSE, trace = FALSE)
+##   ged.fit <- garchFit(data = xt, cond.dist = "sged",
+##                       include.mean = FALSE, trace = FALSE)
+##   t.fit <- garchFit(data = xt, cond.dist = "sstd",
+##                     include.mean = FALSE, trace = FALSE)
+##
+##   par(mfrow = c(2, 2), mar = c(2.1, 4.1, 4.1, 1.1))
+##   ## Plot the standard normal fit
+##   hist(xt/norm.fit@sigma.t, freq = FALSE,
+##        breaks = length(xt)/bin, xlim = c(-4, 4), ylim = myylim,
+##        main = "Standard Normal")
+##   curve(dsnorm(x, 0, 1, xi = coef(norm.fit)["skew"]),
+##         add = TRUE, col = "blue", lwd = 3)
+##   lines(density(xt/norm.fit@sigma.t), col = "red", lwd = 3)
+##   legend("topleft", legend = c("Density", "Fitted"),
+##        col = c("red", "blue"), bty = "n", lty = 1, lwd = 3)
+##   box()
+##
+##   ## Plot the t-distribution fit
+##   par(mar = c(2.1, 3.1, 4.1, 2.1))
+##   hist(xt/t.fit@sigma.t, freq = FALSE,
+##        breaks = length(xt)/bin, xlim = c(-4, 4),
+##        ylim = c(0, 0.6),
+##        main = paste("t (", round(coef(t.fit)[5], 2), ")", sep = ""))
+##   curve(dsstd(x, 0, 1, nu = coef(t.fit)["shape"], xi = coef(t.fit)["skew"]),
+##         add = TRUE, col = "blue", lwd = 3)
+##   lines(density(xt/t.fit@sigma.t), col = "red", lwd = 3)
+##   box()
+##
+##   ## Plot the ged fit
+##   par(mar = c(5.1, 4.1, 1.1, 1.1))
+##   hist(xt/ged.fit@sigma.t, freq = FALSE,
+##        breaks = length(xt)/bin, xlim = c(-4, 4),
+##        ylim = myylim,
+##        main = paste("Generalised Error Distribution (",
+##          round(coef(ged.fit)["shape"], 2), ")", sep = ""),
+##        ylab = "", xlab = "")
+##   curve(dsged(x, 0, 1, nu = coef(ged.fit)["shape"], xi = coef(ged.fit)["skew"]),
+##         add = TRUE, col = "blue", lwd = 3)
+##   lines(density(xt/ged.fit@sigma.t), col = "red", lwd = 3)
+##   box()
+##
+##   ## Plot the mixture fit
+##   mix.sd <- cond.sd(xt, sol$beta)
+##   hist(xt/mix.sd, freq = FALSE,
+##        breaks = length(xt)/bin, ylim = myylim, xlim = c(-4, 4), main = "",
+##      xlab = "Error Distribution")
+##   lines(density(xt/mix.sd), col = "red", lwd = 3)
+##   curve(dmsnorm(x, varmix = sol$mix, xi = sol$beta["xi"]),
+##         add = TRUE, col = "blue", lwd = 3)
+##   box()
+##   for(i in 1:length(sol$mix$pt)){
+##     curve(sol$mix$pr[i] * dsnorm(x, sd = sol$mix$pt[i], xi = sol$beta["xi"]),
+##           add = TRUE, col = "light blue", lwd = 2)
+##   }
+## }
+##
 ## x <- seq(-4, 4, length = 1000)
 ## den <- double(length(x))
 ## for(i in 1:length(x)){
 ##   den[i] <- dg.mg$mix$pr %*% dsnorm(x[i], sd = dg.mg$mix$pt, xi = 0.865)
 ## }
 ## lines(x, den, col = "orange", lwd = 3, lty = 3)
-
+##
 ## lines(x, dmsnorm(x, sd = 1, varmix = dg.mg$mix, xi = dg.mg$beta["xi"]),
 ##       col = "green")
 
@@ -358,36 +460,23 @@ dmsnorm <- function(x, mean = 0, varmix = disc(1, 1), xi = 1){
   ##  The density of the scale skewed normal mixture distribution
   ##
 
-  ## Initial the dimension
   n = length(x)
   n.mix = length(varmix$pt)
+  sx = (x - mean)/matrix(rep(varmix$pt, each = n), nc = n.mix)
 
   ## Calculate the transformed moments
   sd_xi <- sqrt((1 - 2/pi) * (xi^2 + xi^-2) + (4/pi - 1))
   mu_xi <- sqrt(2/pi) * (xi - xi^-1)
-  Sigma <- matrix(rep(varmix$pt^-1, each = n), nc = n.mix, nr = n)
-  z_xi <- Sigma * sd_xi * x + mu_xi
-
-  ## Calculate the log-density then the weighted density
-  ll <- 0.5 * log(2/pi) + 0.5 * log(sd_xi^2) - log(xi + xi^-1) -
-                  log(Sigma) -
-        0.5 * ((Sigma * sd_xi * x + mu_xi) *
-               (xi^-1 * Heaviside(z_xi) + xi * Heaviside(-z_xi)))^2
-  exp(ll) %*% varmix$pr
+  z_xi <- sx * sd_xi + mu_xi
+  Xi = xi^sign(z_xi)
+  g = 2/(xi + 1/xi)
+  den = g * dnorm(x = z_xi/Xi)
+  Density = (den * sd_xi)/matrix(rep(varmix$pt, each = n), nc = n.mix)  
+  Density %*% varmix$pr
 }
 
-## curve(dmsnorm(x, mean = 0, sd = 1, dg.mg$mix, xi = dg.mg$beta[5]), -3, 3,
-##       ylim = c(0, 0.5), col = "blue")
-## curve(dmsnorm(x, mean = 0, sd = 1, xi = 1), lty = 2, add = TRUE)
-## curve(dnorm(x), add = TRUE, col = "red", lty = 2)
-## curve(dmsnorm(x, mean = 0, sd = 1, xi = 2), lty = 3, add = TRUE,
-##       col = "orange", lwd = 2)
-## curve(dsnorm(x, xi = 2), lty = 3, col = "purple", add = TRUE)
-## dmsnorm(1:5, mean = 0, sd = 1:5, dg.mg$mix, xi = dg.mg$beta[5])
 
-
-
-pmsnorm <- function(x, mean = 0, varmix = disc(1, 1), xi = 1){
+pmsnorm <- function(q, mean = 0, varmix = disc(1, 1), xi = 1){
   ## Function for calculating the CDF of the mixture skewed normal
   ## distribution.
   ##
@@ -403,18 +492,19 @@ pmsnorm <- function(x, mean = 0, varmix = disc(1, 1), xi = 1){
   ##  The CDF of the scale mixture skewed normal distribution.
   ##
   
-  n = length(x)
+  n = length(q)
   n.mix = length(varmix$pt)
+  sq = (q - mean)/matrix(rep(varmix$pt, each = n), nc = n.mix)
+  
 
   ## Calculate the transformed moments
   sd_xi <- sqrt((1 - 2/pi) * (xi^2 + xi^-2) + (4/pi - 1))
   mu_xi <- sqrt(2/pi) * (xi - xi^-1)
-  Sigma <- matrix(rep(varmix$pt^-1, each = n), nc = n.mix, nr = n)
-  z_xi <- Sigma * sd_xi * x + mu_xi
-  
-  ## Calculate the CDF
-  lik <- (sd_xi)/((xi + 1/xi) * Sigma) * (1 + erf(z_xi/sqrt(2) * Sigma^2))
-  lik %*% varmix$pr
+  z_xi <- sq * sd_xi  + mu_xi
+  Xi = xi^sign(z_xi)
+  g = 2/(xi + 1/xi)
+  prob = Heaviside(z_xi) - sign(z_xi) * g * Xi * pnorm(q = -abs(z_xi)/Xi)
+  prob %*% varmix$pr
 }
 
 
@@ -500,25 +590,31 @@ cnmms <- function (x, init = NULL, maxit = 1000,
 
         ## Start of scaling
         sc <- sqrt(sum(mix$pr * mix$pt^2))
-        print("Likelihood Before Scaling:")
-        print.snpmle(verb, x, mix, beta, gradient)
+        if(verb != 0){
+          print("Likelihood Before Scaling:")
+          print.snpmle(verb, x, mix, beta, gradient)
+        }
         if(abs(sc - 1) > tol & sc < 5){
-          new.sc <- ifelse(valid(x, c(beta[1] * sc,
+          new.sc <- ifelse(valid.mgarch(x, c(beta[1] * sc,
                                       beta[2],
                                       beta[3] * sc,
                                       beta[4] * sc,
                                       beta[5])),
                            sc, (1/(beta[2] + beta[3]) - 1e-7))
-          print(paste("Scaled by :", sc, sep = ""))
-          cat(paste("Parameters violating the stationarity boundary?: ",
-                    !(new.sc == sc), "\n", sep = ""))
+          if(verb != 0){
+            print(paste("Scaled by :", sc, sep = ""))
+            cat(paste("Parameters violating the stationarity boundary?: ",
+                      !(new.sc == sc), "\n", sep = ""))
+          }
           mix$pt <- mix$pt/sc
           beta[c(1, 3)] <- beta[c(1, 3)] * sc^2
           beta[4] <- beta[4] * sc          
         }
-        print("Likelihood After Scale:")
-        print.snpmle(verb, x, mix, beta, gradient)
-        print(beta)
+        if(verb != 0){
+          print("Likelihood After Scale:")
+          print.snpmle(verb, x, mix, beta, gradient)
+          print(beta)
+        }
 
         ## End of scaling
         
@@ -539,11 +635,14 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     }
     else grad = r$grad
     grad[1:m] = grad[1:m] - sum(rep(w, len = length(x)))
-    sigma.t <- logd.mgarch(x, beta, mix$pt, which = c(0, 0, 0))$sigma.t
+    ## sigma.t <- logd.mgarch(x, beta, mix$pt, which = c(0, 0, 0))$sigma.t
+    ## result <- list(mix = mix, beta = beta, num.iterations = i,
+    ##                ll = attr(mix,"ll")[1], grad = grad,
+    ##                convergence = convergence,
+    ##                sigma.t = sigma.t)
     result <- list(mix = mix, beta = beta, num.iterations = i,
                    ll = attr(mix,"ll")[1], grad = grad,
-                   convergence = convergence,
-                   sigma.t = sigma.t)
+                   convergence = convergence)
     attr(result, "class") <- "mgarch"
     result
 }
@@ -667,7 +766,16 @@ lsch <- function (mix1, beta1, mix2, beta2, x, maxit = 100,
 }
 
 
+sd.disc <- function(dis){
+  sqrt(sum(dis$pt^2 * dis$pr))
+}
+
+
 ## NOTES (Michael): Now the only error left is the following:
 ##
 ## Error in if (brkt && gs > g1s * 0.5 && ll >= ll1 + g1d1 * b * 0.33) {
 ## : missing value where TRUE/FALSE needed
+
+
+## setGeneric("valid", function(x, beta, mix) standardGeneric("valid"))
+
