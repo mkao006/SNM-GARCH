@@ -2,7 +2,6 @@
 ## Reproduceable example
 ######################################################################
 
-library(compiler)
 library(tseries)
 library(fGarch)
 source("logdAG.R")
@@ -21,64 +20,32 @@ source("mgarchSim.R")
 ##                  estimating the skewness parameter). Thus, we can only test
 ##                  our model on skewed data.
 
-## NOTES (Michael): There is not really a point doing the vanilla, if
-##                  the data was coming from a N(1, 1) distribution then
-##                  the garchFit() will surely beat our algorithm.
-
-## Vanilla case
-
-## First simulation.
-## NOTES (Michael): Both algorithm does not recover the original beta's
-##                  well enough, the mix recovered is not satisfactory
-##                  either.
-
-
-sim0 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.2, 1),
-                  mix = disc(c(1, 1)), seed = 1)
-sim0.mg <- cnmms(as.mgarch(sim0$x), plot = "gradient", grid = 1000,
-                 verb = 4, tol = 1e-5)
-sim0.fit <- garchFit(data = sim0$x, include.mean = FALSE, trace = FALSE)
-
 ########################################################################
-## Just up to here
+## Do simulation assuming different distribution and different sample
+## size
 ########################################################################
 
+## Some code for automating the plots
+nsamp <- c(100, 500, 1000)
+for(i in nsamp){
+  pdf(file = paste("samp", i, ".pdf", sep = ""), width = 16)
+  disStudy(n.samp = i)
+  disStudy(n.samp = i, cond.dist = "sstd",
+         param = list(omega = 1e-6, alpha = 0.15, beta = 0.75, nu = 5))
+  disStudy(n.samp = i, cond.dist = "sged",
+           param = list(omega = 1e-6, alpha = 0.15, beta = 0.75, nu = 2))
+  disStudy(n.samp = i, cond.dist = "msnorm",
+           mix = disc(pt = c(0.7, 2.364318), pr = c(0.9, 0.1)))
+  disStudy(n.samp = i, cond.dist = "stable")
+  dev.off()
+}
 
-hist(sim0$x/sim0.mg$sigma.t, breaks = 50, freq = FALSE)
-curve(dnorm(x), add = TRUE, col = "red")
-curve(dmsnorm(x, varmix = sim0.mg$mix, xi = sim0.mg$beta["xi"]),
-      add = TRUE, col = "blue")
-plot.mgarch(sim0$x, sol = sim0.mg)
-
-
-sim1 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.2, 1),
-                  mix = disc(c(0.8, 2.059126), c(0.9, 0.1)), seed = 1)
-sim1.mg <- cnmms(as.mgarch(sim1$x), plot = "gradient", grid = 1000,
-                 verb = 4, tol = 1e-5)
-sim1.fit <- garchFit(data = sim1$x, include.mean = FALSE, trace = FALSE)
-
-hist(sim1$x/sim1.mg$sigma.t, breaks = 50, freq = FALSE)
-curve(dnorm(x), add = TRUE, col = "red")
-curve(dmsnorm(x, varmix = sim1.mg$mix, xi = sim1.mg$beta["xi"]),
-      add = TRUE, col = "blue")
+## Plot all the distributions used
 
 
 
-## Second simulation
-## NOTES (Michael): We increased the length of the time series to see
-##                  whether an improvement can be observed.
-sim2 <- mgarchSim(n = 1000, beta = c(1e-3, 0.8, 0.1, 0.15, 1),
-                  mix = disc(c(0.8, 2.059126), c(0.9, 0.1)))
-(sim2.mg <- cnmms(as.mgarch(sim2$x), plot = "gradient", grid = 1000,
-                 verb = 4, tol = 1e-10))
-sim2.fit <- garchFit(data = sim2$x, include.mean = FALSE, trace = FALSE)
 
-
-test <- garchSim(n = 2000)
-test.fit <- garchFit(data = test, include.mean = FALSE, trace = FALSE)
-## test.mg <- cnmms(as.mgarch(test), plot = "gradient",
-##                  grid = 1000, verb = 4, tol = 1e-10)
-
+## Below are old code for real data
 
 ######################################################################
 ## DEM2GBP
