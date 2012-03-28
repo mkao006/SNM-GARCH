@@ -2,6 +2,9 @@
 ## Functions to support the simulation study
 ######################################################################
 
+## TODO (Michael): Rewrite this section so that you can generate a Garch
+##                 process with different distributions
+
 
 ## Random number generation for the skewed scale normal mixture
 ## distribution
@@ -34,7 +37,7 @@ rssnormm <- function(n, mix = disc(1, 1), xi = 1){
     for(i in 1:n){
         m[i] = sum(w[i] > breaks) + 1
     }
-    sim <- rsnorm(n, mean = 0, sd = mix$pt[m], xi = xi)
+    sim <- fGarch::rsnorm(n, mean = 0, sd = mix$pt[m], xi = xi)
     list(m = m, sim = sim)
 }
 
@@ -43,11 +46,7 @@ rssnormm <- function(n, mix = disc(1, 1), xi = 1){
 ## hist(check$sim, breaks = 50)
 
 
-## TODO (Michael): Rewrite this function so that the model works the
-## same way as what is adopted in ARIMA
-
-
-mgarchSim <- function(beta, n, mix, seed = NULL){
+mgarchSim <- function(n, beta, mix = NA, cond.dist = "msnorm", seed = NULL){
     ## Function to generate GARCH time series with scale normal
     ## mixture distribution
     ##
@@ -77,36 +76,100 @@ mgarchSim <- function(beta, n, mix, seed = NULL){
     sigma2 <- double(n)
     
     sigma2[1] <- beta[4]^2
-    sim[1] <- sqrt(sigma2[1]) * rssnormm(1, mix, beta[5])$sim
+    if(cond.dist == "msnorm"){
+      rand <- rssnormm(1, mix, beta[5])$sim
+    } else if(cond.dist == "stable"){
+      rand <- rstable(1, alpha = 1.6, beta = 0, gamma = 0.7)
+    }
+    sim[1] <- sqrt(sigma2[1]) * rand
 
     ## Loop to generate the underlying volatility first and then the
     ## observations.
+
     for(i in 2:n){
         sigma2[i] = beta[1] + beta[2] * sigma2[i - 1] +
             beta[3] * sim[i - 1]^2
-        sim[i] = sqrt(sigma2[i]) * rssnormm(1, mix, beta[5])$sim
+        if(cond.dist == "msnorm"){
+          error <- rssnormm(1, mix, beta[5])$sim
+        } else if(cond.dist == "stable"){
+          error <- rstable(1, alpha = 1.6, beta = 0, gamma = 0.7)
+        }
+        sim[i] = sqrt(sigma2[i]) * error
     }
     ## class(sim) <- "mgarch"
     list(x = sim, sigma2 = sigma2)
 }
 
 mysim <- mgarchSim(beta = c(1e-3, 0.8, 0.1, 0.001, 2), n = 1000,
+                   cond.dist = "msnorm",
                    mix = disc(c(1, 1.2, 1.5), rep(1/3, 3)))
 plot(mysim$x, type = "l")
 
 
+mysim <- mgarchSim(beta = c(1e-3, 0.8, 0.1, 0.001, 2), n = 1000,
+                   cond.dist = "stable")
+plot(mysim$x, type = "l")
 
-## NOTES (Michael): This section is deprecated due to the fact that the
-## beta have extended from alpha1, beta1, mu, omega to include the
-## initial variance(sigma_1^2) and the skewness (xi)
 
-## mgarchSim <- function(beta, n, mix, seed = 587){
+## Testing codes for stable distribution
+## Alpha
+pSpace <- seq(1e-3, 2, length = 20)
+curve(dnorm(x), -5, 5, col = "red", lwd = 2)
+for(i in 1:length(pSpace)){
+  curve(dstable(x, alpha = pSpace[i], beta = 0, pm = 0), add = TRUE,
+        col = rgb(0, 0, i/length(pSpace)))
+}
+
+
+## Beta
+pSpace <- seq(-1, 1, length = 20)
+curve(dnorm(x), -5, 5, col = "red", lwd = 2)
+for(i in 1:length(pSpace)){
+  curve(dstable(x, alpha = 1, beta = pSpace[i], pm = 0), add = TRUE,
+        col = rgb(0, 0, i/length(pSpace)))
+}
+
+## Gamma
+pSpace <- seq(0.1, 5, length = 50)
+curve(dnorm(x), -5, 5, col = "red", lwd = 2)
+for(i in 1:length(pSpace)){
+  curve(dstable(x, alpha = 1, beta = 1, gamma = pSpace[i], pm = 0), add = TRUE,
+        col = rgb(0, 0, i/length(pSpace)))
+}
+
+
+## Delta
+pSpace <- seq(1e-5, 1, length = 20)
+curve(dnorm(x), -5, 5, col = "red", lwd = 2)
+for(i in 1:length(pSpace)){
+  curve(dstable(x, alpha = 1, beta = 1, delta = pSpace[i], pm = 0), add = TRUE,
+        col = rgb(0, 0, i/length(pSpace)))
+}
+
+## This is the distribution we can generate from
+curve(dnorm(x), -5, 5, col = "red", lwd = 2)
+curve(dstd(x, nu = 4), add = TRUE, col = "green")
+curve(dstable(x, alpha = 1.6, beta = 0, gamma = 0.7), add = TRUE, col = "blue")
+curve(dstable(x, alpha = 1.57, beta = 0.159, gamma = 6.76 * 10^-3,
+              delta = 3.5*10^-3), col = "purple", add = TRUE)
+
+
+
+
+## Old mgarchSim just for backup
+## mgarchSim <- function(n, beta, mix, seed = NULL){
 ##     ## Function to generate GARCH time series with scale normal
 ##     ## mixture distribution
 ##     ##
 ##     ## Args:
-##     ##   beta: A vector containing the parameters of the beta.
-##     ##          Currently the mu, alpha, beta are supported.
+##     ##   beta: [1] omega: The mean of the conditional variance equation.
+##     ##         [2] beta1: The coefficient for the variance in the
+##     ##                    conditional variance equation
+##     ##         [3] alpha1: The coefficient of the squared observation
+##     ##                     in the conditional variance equation.
+##     ##         [4] sigma_0: The estimated initial value of the
+##     ##                      conditional variance
+##     ##         [5] xi: The skewness parameter of the distribution.
 ##     ##   n: The length of the simulated series to be generated.
 ##     ##   mix: The mixing distribution to be used.
 ##     ##   seed: The initial seed for the random number.
@@ -116,25 +179,23 @@ plot(mysim$x, type = "l")
 ##     ##      distribution.
 ##     ##   sigma.t: The underlying volatility that was used to generate
 ##     ##            the time series.
-##     set.seed(seed)
-##     ## Initialise parameters
+
+##     if(!is.null(seed)) set.seed(seed)
+
+##     ## Initialise the vector and their first observations.
 ##     sim <- double(n)
-##     sigma.t <- double(n)
-##     ## Use the theoretical asymptotic variance as the initial value of
-##     ## the conditional standard deviation
-##     sigma.t[1] <- beta[1]/(1 - beta[2])
-##     ## Initialise the first observation
-##     sim[1] <- beta[4] + sqrt(sigma.t[1]) * rsnorm(1, mix)$sim
-##     ## Loop to generate the underlying volatility and then the
+##     sigma2 <- double(n)
+    
+##     sigma2[1] <- beta[4]^2
+##     sim[1] <- sqrt(sigma2[1]) * rssnormm(1, mix, beta[5])$sim
+
+##     ## Loop to generate the underlying volatility first and then the
 ##     ## observations.
 ##     for(i in 2:n){
-##         sigma.t[i] = beta[1] + beta[2] * sigma.t[i - 1] +
+##         sigma2[i] = beta[1] + beta[2] * sigma2[i - 1] +
 ##             beta[3] * sim[i - 1]^2
-##         sim[i] = beta[4] + sqrt(sigma.t[i]) * rsnorm(1, mix)$sim
+##         sim[i] = sqrt(sigma2[i]) * rssnormm(1, mix, beta[5])$sim
 ##     }
-##     class(sim) <- "mgarch"
-##     list(x = sim, sigma.t = sigma.t)
+##     ## class(sim) <- "mgarch"
+##     list(x = sim, sigma2 = sigma2)
 ## }
-## mysim <- mgarchSim(beta = c(1e-3, 0.8, 0.1), n = 1000,
-##                    mix = disc(c(1, 1.2, 1.5), rep(1/3, 3)))
-## plot(mysim$x, type = "l")
