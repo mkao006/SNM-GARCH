@@ -184,10 +184,7 @@ summary.mgarch <- function(sol, digits = 4){
                            sol$mix$pr * sol$mix$pt^2)), 4),
             "\n", sep = ""))
   cat(paste("Persistence: ", round(sum(sol$beta[2:3]), 4), "\n", sep = ""))
-  cat(paste("Maximum gradient equal to zero: ",
-            max(abs(sol$grad)) <=
-            eval(parse(text = paste("1e-", digits, sep = ""))),
-            "\n", sep = ""))
+  cat(paste("Maximum gradient: ", round(max(abs(sol$grad)), 7), "\n", sep = ""))
   cat(paste("Log-likelihood: ", round(sol$ll, 4), "\n", sep = ""))
 }
 
