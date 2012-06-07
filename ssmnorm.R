@@ -183,3 +183,15 @@ rssmnorm <- function(n, mix = disc(1, 1), xi = 1){
     sim
 }
 
+
+## A function for calculating the moments of a skewed scaled normal
+## mixture
+mssmnorm <- function(varmix = disc(1, 1), xi = 1, moments = 1){
+  if(moments == 1){
+    m = (sqrt(2 * varmix$pt/pi) * (xi^2 - xi^-2)/(xi + xi^-1)) %*% varmix$pr
+  } else if(moments == 2){
+    m = (varmix$pt * (xi^3 + xi^-3)/(xi + xi^-1)) %*% varmix$pr
+  }
+  as.numeric(m)
+}
+  
