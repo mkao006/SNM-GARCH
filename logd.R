@@ -33,6 +33,7 @@ library(fGarch)
 logd.mgarch <- function(xt, beta, pt, which){
   ## Initialise variables and list
   xt <- as.numeric(xt)
+  #k <- 20
   T <- length(xt)
   lpt <- length(pt)
   lb <- length(beta)
@@ -40,6 +41,7 @@ logd.mgarch <- function(xt, beta, pt, which){
   names(dl) <- c("ld", "db", "dt")
 
   ## Calculate the conditional variance
+  ## sigma.t <- cond.sd(xt, beta)
   betaSum <- as.numeric(filter(xt[-T]^2, beta[2], "recursive"))
     sigma.t <-
         sqrt(c(beta[4]^2,
@@ -47,7 +49,7 @@ logd.mgarch <- function(xt, beta, pt, which){
                (1 - beta[2]) +
                cumprod(rep.int(beta[2], T - 1)) * beta[4]^2 +
                beta[3] * betaSum))
-
+  
   ## Calculate the density
   if(which[1] == 1){
     dl$ld = log(2) - log(beta[5] + 1/beta[5]) -
@@ -115,16 +117,11 @@ logd.mgarch <- function(xt, beta, pt, which){
 logd.mgarch <- cmpfun(logd.mgarch)
 
 ## Test whether the parameters are valid
-##
-## NOTE(Michael): Check the distribution of beta[4]
 valid.mgarch <- function(x, beta, mix){
-#  n <- length(x)
-#  std = sd(x)
   beta[1] > 0 &&
   beta[2] >= 0 && beta[2] <= 1 &&
   beta[3] >= 0 && beta[3] <= 1 &&
-#  beta[4] > std - std^2 * (2/(n - 1) + kurtosis(x)/n) &&
-  beta[4] > 0.3 * sd(x) &&
+  beta[4] > 0 &&
   beta[5] > 0
 }
 
@@ -152,18 +149,18 @@ initial.mgarch <- function(x, beta = NULL, mix = NULL, kmax = NULL){
 }
 
 
-## Function to determine the grid
-gridpoints.mgarch <- function(x, beta, grid){
-  seq(0.01, 50, length = grid)
-}
-
 ## The weights function, this is useful when the data is discrete and
 ## there are duplicated.
 weights.mgarch <- function(x) 1
 
+## Function to determine the grid
+gridpoints.mgarch <- function(x, beta, grid){
+  seq(1e-5, 20, length = grid)
+}
+
 ## Function to restrict the space of the support points
 suppspace.mgarch <- function(x, beta, mix){
-  c(0.01, 50)
+  c(1e-5, 20)
 }
 
 ## Function for converting different class of time series to mgarch
@@ -199,7 +196,10 @@ coef.mgarch <- function(sol){
   round(sol$beta, 7)
 }
 
-## print.mgarch
+## Extract mixture
+mix.mgarch <- function(sol){
+  sol$mix
+}
 
 
 ## NOTE (Michael): Sometimes the gradient are not zero because the
