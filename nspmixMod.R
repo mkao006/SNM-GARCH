@@ -56,12 +56,18 @@ cnmms <- function (x, init = NULL, maxit = 1000,
         sol = r$x/sum(r$x)
         r = lsch(mix, beta, disc(mix$pt, sol), beta, x, which = c(1, 0, 0))
         mix = collapse.snpmle(r$mix, beta, x)
+        print(beta)
         if (max(grad.support) < 1e+05) {
             r = switch(model, spmle = bfgs(mix, beta, x, which = c(1, 1, 1)),
                        npmle = bfgs(mix, beta, x, which = c(1, 1, 0)))
             beta = r$beta
             mix = collapse.snpmle(r$mix, beta, x)
         }
+        print(x[1])
+        x[1] <- sqrt(abs((s[2]^2 - beta[1] - beta[2] * s[1]^2)/beta[3]))
+        print(x[1])
+        ## NOTE (Michael): Acutally need to recompute the likelihood
+        ## here!
         switch(plot, gradient = plotgrad(x, beta, mix, pch = 1),
                prob = plot(x, mix, beta))
         
@@ -76,14 +82,22 @@ cnmms <- function (x, init = NULL, maxit = 1000,
     }
     
     m = length(mix$pt)
+    ## It seems that k is undefined and should be replaced by m.
     if (m < length(r$mix$pt)) {
-        d = dll.snpmle(x, mix, beta, which = c(0, 1, 1, 1))
-        grad = c(d$dp, d$dt, d$db)
-        names(grad) = c(paste("pr", 1:k, sep = "."), paste("pt",
-            1:k, sep = "."), paste("beta", 1:length(beta), sep = "."))
+      d = dll.snpmle(x, mix, beta, which = c(0, 1, 1, 1))
+      grad = c(d$dp, d$dt, d$db)
+      names(grad) = c(paste("pr", 1:m, sep = "."), paste("pt",
+            1:m, sep = "."), paste("beta", 1:length(beta), sep = "."))
     }
+    ## if (m < length(r$mix$pt)) {
+    ##     d = dll.snpmle(x, mix, beta, which = c(0, 1, 1, 1))
+    ##     grad = c(d$dp, d$dt, d$db)
+    ##     names(grad) = c(paste("pr", 1:k, sep = "."), paste("pt",
+    ##         1:k, sep = "."), paste("beta", 1:length(beta), sep = "."))
+    ## }
     else grad = r$grad
     grad[1:m] = grad[1:m] - sum(rep(w, len = length(x)))
+    
     ## ## Start of scaling
     sc = sqrt(sum(((beta[5]^3 + 1/beta[5]^3))/(beta[5] + 1/beta[5]) *
       mix$pr * mix$pt^2))
