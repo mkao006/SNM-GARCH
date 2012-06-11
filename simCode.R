@@ -39,7 +39,8 @@ BIC <- function(ll, n,  k){
 ##                 5, and 2, 4, 6 for each respective alpha level.
 ##
 modelSim <- function(Data, windowSize = 1000, alpha = c(0.05, 0.01),
-                     n.ahead = 1, trace = FALSE, plot = FALSE){
+                     n.ahead = 1, trace = FALSE, plot = FALSE,
+                     useInitial = TRUE){
   if(n.ahead != 1)
     warning("prediction for skewed scale mixture normal is incorrect")
   
@@ -77,13 +78,15 @@ modelSim <- function(Data, windowSize = 1000, alpha = c(0.05, 0.01),
   snorm.coef = matrix(NA, nc = 4, nr = n.slide)
   sstd.coef = matrix(NA, nc = 5, nr = n.slide)
   sged.coef = matrix(NA, nc = 5, nr = n.slide)
-  ssmnorm.coef = matrix(NA, nc = 5, nr = n.slide)
+  ssmnorm.coef = matrix(NA, nc = 4, nr = n.slide)
   ssmnorm.mix = vector("list", n.slide)
 
 
   ## Determine whether plot should be plotted.
   cnmPlot <- ifelse(plot, "gradient", "null")
-  
+
+  plot.new()
+  plot.window(xlim = c(-5, 5), ylim = c(0, 0.7))
   ## Start subset the time series and slide
   for(i in 1:n.slide){
     cat(paste("Window frame ", i, " of ", n.slide, "\n", sep = ""))
@@ -103,16 +106,21 @@ modelSim <- function(Data, windowSize = 1000, alpha = c(0.05, 0.01),
       include.mean = FALSE, trace = trace))
     sged.fit <- try(garchFit(data = subData, cond.dist = "sged",
       include.mean = FALSE, trace = trace))
-    ssmnorm.fit <- try(cnmms(as.mgarch(subData), grid = 3000,
+    snmsubData <- as.mgarch(subData)
+    if(useInitial & i != 1)
+      attr(snmsubData, "sigma1") <- ssmnorm.fit$sigma.t[1]
+    ssmnorm.fit <- try(cnmms(snmsubData, grid = 3000,
       plot = cnmPlot, init = myinit))
 
     ## Update initial value
-    if(!inherits(ssmnorm.fit, "try-error") &&
-       valid.mgarch(x = Data[1:windowSize + i], beta = coef(ssmnorm.fit),
-                    mix = ssmnorm.fit$mix)){
-      myinit = list(beta = coef(ssmnorm.fit), mix = ssmnorm.fit$mix)
-    } else {
-      myinit <- NULL
+    if(useInitial){
+      if(!inherits(ssmnorm.fit, "try-error") &&
+         valid.mgarch(x = Data[1:windowSize + i], beta = coef(ssmnorm.fit),
+                      mix = ssmnorm.fit$mix)){
+        myinit = list(beta = coef(ssmnorm.fit), mix = ssmnorm.fit$mix)
+      } else {
+        myinit <- NULL
+      }
     }
     
     ## Save the likelihood and the information criteria
@@ -148,7 +156,7 @@ modelSim <- function(Data, windowSize = 1000, alpha = c(0.05, 0.01),
       ssmnorm.coef[i, ] = coef(ssmnorm.fit)
     if(!inherits(ssmnorm.fit, "try-error")){
       ssmnorm.mix[[i]] = ssmnorm.fit$mix
-      n.param[i, 7] = 2 * NROW(ssmnorm.mix[[i]]) + 1
+      n.param[i, 7] = 2 * NROW(ssmnorm.mix[[i]]) + 2
     }
 
     ## Calculate the VaR bound
@@ -184,8 +192,10 @@ modelSim <- function(Data, windowSize = 1000, alpha = c(0.05, 0.01),
                           mybeta[2]  * ssmnorm.fit$sigma.t[windowSize]^2)
       q <- try(qssmnorm(alpha, varmix = ssmnorm.fit$mix,
                         xi = coef(ssmnorm.fit)["xi"]))
-      print(ssmnorm.fit$mix)
-      print(coef(ssmnorm.fit)["xi"])
+      ## curve(dssmnorm(x, varmix = ssmnorm.fit$mix, xi = coef(ssmnorm.fit)["xi"]),
+      ##                -5, 5, col = rgb(i/n.slide, 0, 0), add = TRUE)
+      ## print(ssmnorm.fit$mix)
+      ## print(coef(ssmnorm.fit))
       ssmnorm.VaR <- ssmnorm.psd * q
     }
       
